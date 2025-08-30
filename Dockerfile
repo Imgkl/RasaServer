@@ -10,7 +10,7 @@ COPY frontend/jellybelly-web frontend/jellybelly-web
 RUN cd frontend/jellybelly-web && npm run build
 
 # Build stage
-FROM --platform=$BUILDPLATFORM ghcr.io/swiftlang/swift:6.2-jammy AS builder
+FROM --platform=$BUILDPLATFORM swift:6.0-jammy AS builder
 
 # Set build arguments for cross-compilation
 ARG TARGETPLATFORM
