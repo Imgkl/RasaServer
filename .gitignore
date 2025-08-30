@@ -17,6 +17,7 @@ jellybelly.sqlite
 config/
 logs/
 data/
+.server*.log
 
 # Editors
 .idea/
