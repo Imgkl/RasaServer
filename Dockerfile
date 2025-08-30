@@ -12,18 +12,9 @@ RUN cd frontend/jellybelly-web && npm run build
 # Build stage
 FROM --platform=$BUILDPLATFORM swift:6.0-jammy AS builder
 
-# Set build arguments for cross-compilation
-ARG TARGETPLATFORM
-ARG BUILDPLATFORM
-
 WORKDIR /app
 
-# Install cross-compilation tools for ARM64 if needed
-RUN if [ "$TARGETPLATFORM" = "linux/arm64" ] && [ "$BUILDPLATFORM" != "linux/arm64" ]; then \
-    apt-get update && \
-    apt-get install -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross && \
-    rm -rf /var/lib/apt/lists/*; \
-    fi
+# No cross-compilation: Buildx/QEMU will run native builds per platform
 
 # Copy package files first for better layer caching
 COPY Package.swift Package.resolved ./
@@ -37,13 +28,8 @@ COPY Sources ./Sources
 # Copy built web assets from the web stage
 COPY --from=web /workspace/public ./public
 
-# Build the application with cross-compilation support
-RUN if [ "$TARGETPLATFORM" = "linux/arm64" ] && [ "$BUILDPLATFORM" != "linux/arm64" ]; then \
-    swift build -c release --static-swift-stdlib \
-        --destination .build/arm64-unknown-linux-gnu.json; \
-    else \
-    swift build -c release --static-swift-stdlib; \
-    fi
+# Build the application (native within the emulated platform)
+RUN swift build -c release --static-swift-stdlib
 
 # Runtime stage - use ARM64-capable base for Pi
 FROM ubuntu:22.04
