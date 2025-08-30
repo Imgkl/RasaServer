@@ -49,6 +49,11 @@ struct JellybellyServer {
         // Auto-run migrations
         try await runMigrations(fluent: fluent, logger: logger)
         
+        // Allow override via WEBUI_PORT env before app is created
+        if let portEnv = ProcessInfo.processInfo.environment["WEBUI_PORT"], let p = Int(portEnv) {
+            logger.info("🌐 Overriding port via WEBUI_PORT=\(p)")
+            appConfig.port = p
+        }
         // Create services (even if not configured yet)
         let jellyfinService = JellyfinService(
             baseURL: appConfig.jellyfinUrl,
@@ -76,12 +81,7 @@ struct JellybellyServer {
             httpClient: httpClient,
             eventLoopGroup: eventLoopGroup
         )
-        
-        // Allow override via WEBUI_PORT env only (single port)
-        if let portEnv = ProcessInfo.processInfo.environment["WEBUI_PORT"], let p = Int(portEnv) {
-            logger.info("🌐 Overriding port via WEBUI_PORT=\(p)")
-            appConfig.port = p
-        }
+
         logger.info("🚀 Server starting on \(appConfig.host):\(appConfig.port)")
         logger.info("🌐 Dashboard available at http://\(appConfig.host):\(appConfig.port)")
         
