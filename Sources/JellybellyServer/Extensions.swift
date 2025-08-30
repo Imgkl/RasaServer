@@ -196,8 +196,8 @@ extension Model {
 struct Validator {
     static func validateEmail(_ email: String) -> Bool {
         let emailRegex = "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"
-        let emailTest = NSPredicate(format: "SELF MATCHES %@", emailRegex)
-        return emailTest.evaluate(with: email)
+        // NSPredicate(format:) is unavailable on swift-corelibs-foundation (Linux)
+        return email.range(of: emailRegex, options: .regularExpression) != nil
     }
     
     static func validateURL(_ urlString: String) -> Bool {

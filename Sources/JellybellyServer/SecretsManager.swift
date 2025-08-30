@@ -17,10 +17,14 @@ struct SecretsManager {
             }
             return SymmetricKey(data: keyData)
         } else {
-            // 32 random bytes
+            // 32 random bytes (cross-platform)
+            #if canImport(Security)
             var bytes = [UInt8](repeating: 0, count: 32)
             _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
             let keyData = Data(bytes)
+            #else
+            let keyData = Data((0..<32).map { _ in UInt8.random(in: 0...255) })
+            #endif
             let b64 = keyData.base64EncodedString()
             guard let outData = b64.data(using: .utf8) else { throw SecretsError.keyWriteFailed }
             fm.createFile(atPath: path, contents: outData, attributes: [.posixPermissions: 0o600])
