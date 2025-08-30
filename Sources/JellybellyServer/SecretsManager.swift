@@ -1,5 +1,5 @@
 import Foundation
-import CryptoKit
+import Crypto
 import Logging
 
 enum SecretsError: Error { case keyReadFailed, keyWriteFailed, invalidBase64 }
@@ -30,7 +30,8 @@ struct SecretsManager {
     }
     
     static func encryptString(_ plaintext: String, key: SymmetricKey) throws -> String {
-        let sealed = try AES.GCM.seal(Data(plaintext.utf8), using: key)
+        let nonce =  AES.GCM.Nonce() // random
+        let sealed = try AES.GCM.seal(Data(plaintext.utf8), using: key, nonce: nonce)
         guard let combined = sealed.combined else { throw SecretsError.keyWriteFailed }
         return combined.base64EncodedString()
     }

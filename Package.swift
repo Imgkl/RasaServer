@@ -26,6 +26,9 @@ let package = Package(
         // Configuration
         .package(url: "https://github.com/jpsim/Yams.git", from: "5.1.0"),
         
+        // Cross‑platform CryptoKit for Linux
+        .package(url: "https://github.com/apple/swift-crypto.git", from: "3.9.0"),
+        
         // (Anthropic via HTTP API; no SDK dependency)
     ],
     targets: [
@@ -46,7 +49,8 @@ let package = Package(
                 // Utilities
                 .product(name: "Collections", package: "swift-collections"),
                 .product(name: "Logging", package: "swift-log"),
-                .product(name: "Yams", package: "Yams")
+                .product(name: "Yams", package: "Yams"),
+                .product(name: "Crypto", package: "swift-crypto")
             ],
             path: "Sources/JellybellyServer"
         ),
