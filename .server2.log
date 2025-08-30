@@ -1,0 +1,14 @@
+[0/1] Planning build
+Building for debugging...
+[0/3] Write swift-version--58304C5D6DBC2206.txt
+Build of product 'JellybellyServer' complete! (6.16s)
+2025-08-30T03:07:12+0530 info JellybellyServer: [JellybellyServer] 🫐 Starting Jellybelly Server v1.0.0
+2025-08-30T03:07:12+0530 info JellybellyServer: [JellybellyServer] 📊 Database configured at: jellybelly.sqlite
+2025-08-30T03:07:12+0530 info JellybellyServer: [JellybellyServer] 🔄 Running database migrations...
+2025-08-30T03:07:12+0530 info JellybellyServer: [JellybellyServer] ✅ Database migrations completed
+2025-08-30T03:07:12+0530 info JellybellyServer: [JellybellyServer] 🚀 Server starting on 0.0.0.0:8001
+2025-08-30T03:07:12+0530 info JellybellyServer: [JellybellyServer] 🌐 Dashboard available at http://0.0.0.0:8001
+2025-08-30T03:07:12+0530 info Jellybelly/1.0.0: [HummingbirdCore] Server started and listening on 0.0.0.0:8001
+2025-08-30T10:06:08+0530 info HTTP: [JellybellyServer] GET /setup → 200 (0.94ms)
+2025-08-30T10:06:08+0530 info HTTP: [JellybellyServer] GET /.well-known/appspecific/com.chrome.devtools.json → 404 (1.81ms)
+2025-08-30T10:06:08+0530 info HTTP: [JellybellyServer] GET /favicon.ico → 200 (1.29ms)

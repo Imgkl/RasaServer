@@ -1,0 +1,9 @@
+2025-08-30T10:13:47+0530 info JellybellyServer: [JellybellyServer] 🫐 Starting Jellybelly Server v1.0.0
+2025-08-30T10:13:47+0530 info JellybellyServer: [JellybellyServer] 📊 Database configured at: jellybelly.sqlite
+2025-08-30T10:13:47+0530 info JellybellyServer: [JellybellyServer] 🔄 Running database migrations...
+2025-08-30T10:13:47+0530 info JellybellyServer: [JellybellyServer] ✅ Database migrations completed
+2025-08-30T10:13:47+0530 info JellybellyServer: [JellybellyServer] 🚀 Server starting on 0.0.0.0:8001
+2025-08-30T10:13:47+0530 info JellybellyServer: [JellybellyServer] 🌐 Dashboard available at http://0.0.0.0:8001
+2025-08-30T10:13:47+0530 info Jellybelly/1.0.0: [HummingbirdCore] Server started and listening on 0.0.0.0:8001
+2025-08-30T10:13:47+0530 info HTTP: [JellybellyServer] GET /assets/index-D5QsA7bU.js → 404 (0.80ms)
+2025-08-30T10:13:47+0530 info HTTP: [JellybellyServer] GET / → 200 (0.34ms)

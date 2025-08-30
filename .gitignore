@@ -1,0 +1,31 @@
+.DS_Store
+/.build
+/Packages
+xcuserdata/
+DerivedData/
+.swiftpm/configuration/registries.json
+.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+.netrc
+
+# Frontend artifacts
+frontend/jellybelly-web/node_modules/
+frontend/jellybelly-web/.vite/
+frontend/jellybelly-web/dist/
+
+# Local runtime data
+jellybelly.sqlite
+config/
+logs/
+data/
+
+# Editors
+.idea/
+.vscode/
+*.swp
+
+# Env files
+.env
+.env.*
+
+# Source maps from built assets (optional)
+public/assets/*.map

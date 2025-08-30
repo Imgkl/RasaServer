@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  jellybelly:
+    build: 
+      context: .
+      platforms:
+        - linux/arm64  # Pi 4/5 ARM64
+        - linux/amd64  # Development/x86
+    container_name: jellybelly-server
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+      - ./logs:/app/logs
+    environment:
+      # Override config via environment variables
+      - JELLYBELLY_HOST=0.0.0.0
+      - JELLYBELLY_PORT=8001
+      - JELLYBELLY_DATABASE_PATH=/app/data/jellybelly.sqlite
+      - JELLYBELLY_LOG_LEVEL=info
+    networks:
+      - jellybelly-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    # Pi-specific optimizations
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpu_count: 2
+
+networks:
+  jellybelly-network:
+    driver: bridge
+
+volumes:
+  data:
+    driver: local
+  config:
+    driver: local
+  logs:
+    driver: local

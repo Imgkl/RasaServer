@@ -1,0 +1,28 @@
+# Ignore local caches and build outputs
+.build
+.swiftpm
+Packages
+
+# Local data/config
+jellybelly.sqlite
+config
+logs
+data
+
+# Git
+.git
+.gitignore
+
+# Node install caches
+frontend/jellybelly-web/node_modules
+frontend/jellybelly-web/.vite
+frontend/jellybelly-web/dist
+
+# OS/editor noise
+.DS_Store
+.vscode
+.idea
+
+# Docs
+README*.md
+**/*.md
