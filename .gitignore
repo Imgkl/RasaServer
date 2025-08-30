@@ -30,3 +30,5 @@ data/
 
 # Source maps from built assets (optional)
 public/assets/*.map
+.server.log
+.server*.log
