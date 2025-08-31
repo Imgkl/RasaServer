@@ -14,7 +14,7 @@ ARG BUILDPLATFORM
 # ==============================================================================
 # Stage 1: Frontend Build (from frontend/ directory)
 # ==============================================================================
-FROM --platform=$BUILDPLATFORM node:${NODE_VERSION}-alpine AS frontend-builder
+FROM node:${NODE_VERSION}-alpine AS frontend-builder
 
 WORKDIR /app
 
