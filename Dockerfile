@@ -68,19 +68,19 @@ COPY Sources/ ./Sources/
 # Build natively for the target platform (buildx/QEMU handles emulation)
 ARG TARGETPLATFORM
 RUN echo "Building JellyBelly Server for target platform: $TARGETPLATFORM" && \
-    swift build --configuration release
+    swift build --configuration release --product JellybellyServer
 
 # Verify and display binary information
 RUN echo "=== Binary Verification ===" && \
     ls -la .build/release/ && \
-    file .build/release/jellybelly-server && \
-    ldd .build/release/jellybelly-server 2>/dev/null || echo "Static binary (no dynamic dependencies)" && \
-    echo "Binary size: $(stat -c%s .build/release/jellybelly-server) bytes" && \
+    file .build/release/JellybellyServer || true && \
+    ldd .build/release/JellybellyServer 2>/dev/null || echo "Static binary (no dynamic dependencies)" && \
+    echo "Binary size: $(stat -c%s .build/release/JellybellyServer) bytes" || true && \
     echo "=========================="
 
 # Strip binary to reduce size
-RUN strip .build/release/jellybelly-server || true && \
-    echo "Final binary size: $(stat -c%s .build/release/jellybelly-server) bytes"
+RUN strip .build/release/JellybellyServer || true && \
+    echo "Final binary size: $(stat -c%s .build/release/JellybellyServer) bytes" || true
 
 # ==============================================================================
 # Stage 3: Production Runtime
@@ -125,7 +125,7 @@ RUN mkdir -p \
 
 # Copy Swift binary from builder stage
 COPY --from=swift-builder --chown=jellybelly:jellybelly \
-    /workspace/.build/release/jellybelly-server \
+    /workspace/.build/release/JellybellyServer \
     /app/jellybelly-server
 
 # Copy frontend build from frontend builder (Vite outDir -> /public)
