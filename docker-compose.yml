@@ -10,7 +10,7 @@ services:
     container_name: jellybelly-server
     restart: unless-stopped
     ports:
-      - "8001:8001"
+      - "3242:3242"
     volumes:
       - ./data:/app/data
       - ./config:/app/config
@@ -18,13 +18,13 @@ services:
     environment:
       # Override config via environment variables
       - JELLYBELLY_HOST=0.0.0.0
-      - JELLYBELLY_PORT=8001
+      - WEBUI_PORT=3242
       - JELLYBELLY_DATABASE_PATH=/app/data/jellybelly.sqlite
       - JELLYBELLY_LOG_LEVEL=info
     networks:
       - jellybelly-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3242/health"]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -39,14 +39,10 @@ RUN ls -la /public/ && echo "Frontend build completed"
 # ==============================================================================
 # Stage 2: Swift Backend Build with Cross-Compilation  
 # ==============================================================================
-FROM --platform=$BUILDPLATFORM swift:${SWIFT_VERSION}-${UBUNTU_VERSION} AS swift-builder
+FROM swift:${SWIFT_VERSION}-${UBUNTU_VERSION} AS swift-builder
 
-# Install build dependencies and cross-compilation tools
+# Install native build dependencies
 RUN export DEBIAN_FRONTEND=noninteractive && \
-    dpkg --add-architecture arm64 && \
-    printf "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports ${UBUNTU_VERSION} main restricted universe multiverse\n" > /etc/apt/sources.list.d/arm64.list && \
-    printf "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports ${UBUNTU_VERSION}-updates main restricted universe multiverse\n" >> /etc/apt/sources.list.d/arm64.list && \
-    printf "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports ${UBUNTU_VERSION}-security main restricted universe multiverse\n" >> /etc/apt/sources.list.d/arm64.list && \
     apt-get update && \
     apt-get install -y \
         build-essential \
@@ -55,14 +51,7 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
         libsqlite3-dev \
         libssl-dev \
         zlib1g-dev \
-        # ARM64 cross-compilation tools
-        gcc-aarch64-linux-gnu \
-        g++-aarch64-linux-gnu \
-        libc6-dev-arm64-cross \
-        # ARM64 development libraries
-        libsqlite3-dev:arm64 \
-        libssl-dev:arm64 \
-        zlib1g-dev:arm64 \
+        binutils \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace
@@ -76,29 +65,10 @@ RUN swift package resolve
 # Copy Swift source code
 COPY Sources/ ./Sources/
 
-# Cross-compile based on target platform
+# Build natively for the target platform (buildx/QEMU handles emulation)
 ARG TARGETPLATFORM
-RUN echo "Building JellyBelly Server for platform: $TARGETPLATFORM" && \
-    if [ "$TARGETPLATFORM" = "linux/arm64" ]; then \
-        echo "Cross-compiling for ARM64 (Raspberry Pi)..." && \
-        export CC=aarch64-linux-gnu-gcc && \
-        export CXX=aarch64-linux-gnu-g++ && \
-        export AR=aarch64-linux-gnu-ar && \
-        export STRIP=aarch64-linux-gnu-strip && \
-        export PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig && \
-        export CFLAGS="-I/usr/aarch64-linux-gnu/include" && \
-        export LDFLAGS="-L/usr/aarch64-linux-gnu/lib" && \
-        swift build \
-            --configuration release \
-            --triple aarch64-unknown-linux-gnu \
-            -Xcc -I/usr/aarch64-linux-gnu/include \
-            -Xlinker -L/usr/aarch64-linux-gnu/lib && \
-        echo "ARM64 build completed"; \
-    else \
-        echo "Building for native AMD64..." && \
-        swift build --configuration release && \
-        echo "AMD64 build completed"; \
-    fi
+RUN echo "Building JellyBelly Server for target platform: $TARGETPLATFORM" && \
+    swift build --configuration release
 
 # Verify and display binary information
 RUN echo "=== Binary Verification ===" && \
@@ -109,20 +79,13 @@ RUN echo "=== Binary Verification ===" && \
     echo "=========================="
 
 # Strip binary to reduce size
-ARG TARGETPLATFORM  
-RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; then \
-        echo "Stripping ARM64 binary..." && \
-        aarch64-linux-gnu-strip .build/release/jellybelly-server; \
-    else \
-        echo "Stripping AMD64 binary..." && \
-        strip .build/release/jellybelly-server; \
-    fi && \
+RUN strip .build/release/jellybelly-server || true && \
     echo "Final binary size: $(stat -c%s .build/release/jellybelly-server) bytes"
 
 # ==============================================================================
 # Stage 3: Production Runtime
 # ==============================================================================
-FROM --platform=$TARGETPLATFORM swift:${SWIFT_VERSION}-${UBUNTU_VERSION}-slim
+FROM swift:${SWIFT_VERSION}-${UBUNTU_VERSION}-slim
 
 # Install runtime dependencies
 RUN export DEBIAN_FRONTEND=noninteractive && \
@@ -187,6 +150,7 @@ USER jellybelly
 # Environment variables for JellyBelly Server
 ENV JELLYBELLY_HOST=0.0.0.0
 ENV JELLYBELLY_PORT=3242
+ENV WEBUI_PORT=3242
 ENV JELLYBELLY_DATABASE_PATH=/app/data/jellybelly.sqlite
 ENV JELLYBELLY_LOG_LEVEL=info
 ENV JELLYBELLY_PUBLIC_PATH=/app/public
