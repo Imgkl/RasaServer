@@ -33,8 +33,8 @@ COPY frontend/jellybelly-web/ ./
 ENV NODE_ENV=production
 RUN npm run build
 
-# Verify frontend build
-RUN ls -la dist/ && echo "Frontend build completed"
+# Verify frontend build outputs to /public as configured by Vite
+RUN ls -la /public/ && echo "Frontend build completed"
 
 # ==============================================================================
 # Stage 2: Swift Backend Build with Cross-Compilation  
@@ -161,9 +161,9 @@ COPY --from=swift-builder --chown=jellybelly:jellybelly \
     /workspace/.build/release/jellybelly-server \
     /app/jellybelly-server
 
-# Copy frontend build from frontend builder
+# Copy frontend build from frontend builder (Vite outDir -> /public)
 COPY --from=frontend-builder --chown=jellybelly:jellybelly \
-    /app/dist/ \
+    /public/ \
     /app/public/
 
 # Copy static assets from top-level public directory
