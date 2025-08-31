@@ -21,13 +21,13 @@ WORKDIR /app
 RUN apk add --no-cache python3 make g++ git
 
 # Copy frontend package files
-COPY frontend/package.json frontend/package-lock.json* ./
+COPY frontend/jellybelly-web/package.json frontend/jellybelly-web/package-lock.json* ./
 
-# Install dependencies
-RUN npm ci --only=production --no-audit --no-fund
+# Install dependencies (include devDependencies for build tools)
+RUN npm ci --no-audit --no-fund
 
 # Copy frontend source code
-COPY frontend/ ./
+COPY frontend/jellybelly-web/ ./
 
 # Build the frontend
 ENV NODE_ENV=production
@@ -166,8 +166,8 @@ COPY --from=frontend-builder --chown=jellybelly:jellybelly \
     /app/dist/ \
     /app/public/
 
-# Copy static assets from public directory (if exists)
-COPY --chown=jellybelly:jellybelly public/ /app/static/ 2>/dev/null || true
+# Copy static assets from top-level public directory
+COPY --chown=jellybelly:jellybelly public/ /app/static/
 
 # Make binary executable
 RUN chmod +x /app/jellybelly-server
