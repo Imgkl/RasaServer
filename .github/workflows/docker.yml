@@ -18,10 +18,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup QEMU
+      - name: Setup QEMU (arm64 only)
         uses: docker/setup-qemu-action@v3
         with:
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/arm64
 
       - name: Setup Buildx
         uses: docker/setup-buildx-action@v3
@@ -45,16 +45,17 @@ jobs:
           IMAGE="ghcr.io/${GITHUB_REPOSITORY}"
           echo "image=${IMAGE,,}" >> $GITHUB_OUTPUT
 
-      - name: Build and push
+      - name: Build and push (arm64 only)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
           push: true
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           tags: |
             ${{ steps.img.outputs.image }}:${{ steps.vars.outputs.tag }}
             ${{ steps.img.outputs.image }}:latest
           build-args: |
             TARGETPLATFORM=linux/arm64
-            BUILDPLATFORM=linux/amd64

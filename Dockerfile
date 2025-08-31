@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7-labs
 # ==============================================================================
 # JellyBelly Server - Complete Dockerfile for Your Project Structure
 # Swift Hummingbird Backend + Frontend + ARM64 Cross-Compilation
@@ -24,7 +25,8 @@ RUN apk add --no-cache python3 make g++ git
 COPY frontend/jellybelly-web/package.json frontend/jellybelly-web/package-lock.json* ./
 
 # Install dependencies (include devDependencies for build tools)
-RUN npm ci --no-audit --no-fund
+RUN --mount=type=cache,id=npm-cache,target=/root/.npm \
+    npm ci --no-audit --no-fund
 
 # Copy frontend source code
 COPY frontend/jellybelly-web/ ./
@@ -60,14 +62,20 @@ WORKDIR /workspace
 COPY Package.swift Package.resolved* ./
 
 # Resolve Swift dependencies
-RUN swift package resolve
+RUN --mount=type=cache,id=spm-cache,target=/root/.swiftpm \
+    --mount=type=cache,id=spm-ccache,target=/root/.cache \
+    --mount=type=cache,id=spm-build,target=/workspace/.build \
+    swift package resolve
 
 # Copy Swift source code
 COPY Sources/ ./Sources/
 
 # Build natively for the target platform (buildx/QEMU handles emulation)
 ARG TARGETPLATFORM
-RUN echo "Building JellyBelly Server for target platform: $TARGETPLATFORM" && \
+RUN --mount=type=cache,id=spm-cache,target=/root/.swiftpm \
+    --mount=type=cache,id=spm-ccache,target=/root/.cache \
+    --mount=type=cache,id=spm-build,target=/workspace/.build \
+    echo "Building JellyBelly Server for target platform: $TARGETPLATFORM" && \
     swift build --configuration release --product JellybellyServer
 
 # Verify and display binary information
@@ -151,14 +159,6 @@ USER jellybelly
 ENV JELLYBELLY_HOST=0.0.0.0
 ENV JELLYBELLY_PORT=3242
 ENV WEBUI_PORT=3242
-ENV JELLYBELLY_DATABASE_PATH=/app/data/jellybelly.sqlite
-ENV JELLYBELLY_LOG_LEVEL=info
-ENV JELLYBELLY_PUBLIC_PATH=/app/public
-ENV JELLYBELLY_STATIC_PATH=/app/static
-ENV JELLYBELLY_CONFIG_PATH=/app/config
-ENV JELLYBELLY_DATA_PATH=/app/data
-ENV JELLYBELLY_LOGS_PATH=/app/logs
-ENV JELLYBELLY_TMP_PATH=/app/tmp
 
 # Swift runtime optimizations
 ENV SWIFT_DETERMINISTIC_HASHING=1
@@ -196,16 +196,3 @@ ENTRYPOINT ["/usr/bin/tini", "--"]
 
 # Default command to run the server
 CMD ["/app/jellybelly-server"]
-
-# ==============================================================================
-# Build completion message (shown during build process)
-# ==============================================================================
-ARG TARGETPLATFORM
-RUN echo "===============================================" && \
-    echo "  JellyBelly Server Build Complete!" && \
-    echo "  Platform: $TARGETPLATFORM" && \
-    echo "  Swift Version: ${SWIFT_VERSION}" && \
-    echo "  Port: 3242" && \
-    echo "  User: jellybelly" && \
-    echo "  Ready for Raspberry Pi deployment!" && \
-    echo "==============================================="
