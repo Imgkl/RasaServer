@@ -64,7 +64,6 @@ COPY Package.swift Package.resolved* ./
 # Resolve Swift dependencies
 RUN --mount=type=cache,id=spm-cache,target=/root/.swiftpm \
     --mount=type=cache,id=spm-ccache,target=/root/.cache \
-    --mount=type=cache,id=spm-build,target=/workspace/.build \
     swift package resolve
 
 # Copy Swift source code
@@ -74,7 +73,6 @@ COPY Sources/ ./Sources/
 ARG TARGETPLATFORM
 RUN --mount=type=cache,id=spm-cache,target=/root/.swiftpm \
     --mount=type=cache,id=spm-ccache,target=/root/.cache \
-    --mount=type=cache,id=spm-build,target=/workspace/.build \
     echo "Building JellyBelly Server for target platform: $TARGETPLATFORM" && \
     swift build --configuration release --product JellybellyServer
 
