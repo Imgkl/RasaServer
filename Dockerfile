@@ -43,6 +43,10 @@ FROM --platform=$BUILDPLATFORM swift:${SWIFT_VERSION}-${UBUNTU_VERSION} AS swift
 
 # Install build dependencies and cross-compilation tools
 RUN export DEBIAN_FRONTEND=noninteractive && \
+    dpkg --add-architecture arm64 && \
+    printf "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports ${UBUNTU_VERSION} main restricted universe multiverse\n" > /etc/apt/sources.list.d/arm64.list && \
+    printf "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports ${UBUNTU_VERSION}-updates main restricted universe multiverse\n" >> /etc/apt/sources.list.d/arm64.list && \
+    printf "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports ${UBUNTU_VERSION}-security main restricted universe multiverse\n" >> /etc/apt/sources.list.d/arm64.list && \
     apt-get update && \
     apt-get install -y \
         build-essential \
