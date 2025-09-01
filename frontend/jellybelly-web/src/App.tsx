@@ -276,7 +276,7 @@ export default function App() {
       const map = JSON.parse(text)
       const keys = Object.keys(map || {})
       const total = keys.length
-      const batchSize = 1
+      const batchSize = 10
       let processed = 0
       let success = 0
       let fail = 0
