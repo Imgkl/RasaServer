@@ -145,10 +145,8 @@ COPY --chown=jellybelly:jellybelly public/ /app/static/
 # Make binary executable
 RUN chmod +x /app/jellybelly-server
 
-# Verify binary can execute
-RUN echo "Testing binary execution..." && \
-    /app/jellybelly-server --help 2>&1 || \
-    echo "Binary is executable and ready"
+# Optionally verify binary with --version without starting services (skip during CI to avoid running server)
+# RUN /app/jellybelly-server --version || true
 
 # Switch to application user for security
 USER jellybelly
