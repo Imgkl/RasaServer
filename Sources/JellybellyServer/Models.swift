@@ -175,6 +175,8 @@ struct JellyfinMovieMetadata: Codable, Sendable {
     let genres: [String]
     let people: [JellyfinPerson]
     let mediaStreams: [JellyfinMediaStream]
+    let providerIds: [String: String]?
+    let studios: [JellyfinStudio]?
     let imageBlurHashes: [String: [String: String]]?
     let userData: JellyfinUserData?
 
@@ -188,6 +190,8 @@ struct JellyfinMovieMetadata: Codable, Sendable {
         case genres = "Genres"
         case people = "People"
         case mediaStreams = "MediaStreams"
+        case providerIds = "ProviderIds"
+        case studios = "Studios"
         case imageBlurHashes = "ImageBlurHashes"
         case userData = "UserData"
     }
@@ -202,6 +206,8 @@ struct JellyfinMovieMetadata: Codable, Sendable {
         genres: [String],
         people: [JellyfinPerson],
         mediaStreams: [JellyfinMediaStream],
+        providerIds: [String: String]?,
+        studios: [JellyfinStudio]?,
         imageBlurHashes: [String: [String: String]]?,
         userData: JellyfinUserData?
     ) {
@@ -214,6 +220,8 @@ struct JellyfinMovieMetadata: Codable, Sendable {
         self.genres = genres
         self.people = people
         self.mediaStreams = mediaStreams
+        self.providerIds = providerIds
+        self.studios = studios
         self.imageBlurHashes = imageBlurHashes
         self.userData = userData
     }
@@ -229,6 +237,8 @@ struct JellyfinMovieMetadata: Codable, Sendable {
         self.genres = try c.decodeIfPresent([String].self, forKey: .genres) ?? []
         self.people = try c.decodeIfPresent([JellyfinPerson].self, forKey: .people) ?? []
         self.mediaStreams = try c.decodeIfPresent([JellyfinMediaStream].self, forKey: .mediaStreams) ?? []
+        self.providerIds = try c.decodeIfPresent([String: String].self, forKey: .providerIds)
+        self.studios = try c.decodeIfPresent([JellyfinStudio].self, forKey: .studios)
         self.imageBlurHashes = try c.decodeIfPresent([String: [String: String]].self, forKey: .imageBlurHashes)
         self.userData = try c.decodeIfPresent(JellyfinUserData.self, forKey: .userData)
     }
@@ -297,6 +307,16 @@ struct JellyfinUserData: Codable, Sendable {
     }
 }
 
+struct JellyfinStudio: Codable, Sendable {
+    let id: String
+    let name: String
+
+    enum CodingKeys: String, CodingKey {
+        case id = "Id"
+        case name = "Name"
+    }
+}
+
 // MARK: - Response DTOs
 struct MovieResponse: Codable, Sendable {
     let id: UUID?
@@ -329,6 +349,102 @@ struct TagResponse: Codable, Sendable {
         self.description = tag.description
         self.usageCount = tag.usageCount
         self.createdAt = tag.createdAt
+    }
+}
+
+// MARK: - Client DTOs
+struct ClientMovieResponse: Codable, Sendable {
+    let id: UUID?
+    let jellyfinId: String
+    let title: String
+    let year: Int?
+    let runtime: Int?
+    let description: String?
+    let images: ClientImages
+    let tags: [TagResponse]
+    let identifiers: ClientIdentifiers
+    let player: ClientPlayer
+    let ratings: ClientRatings?
+}
+
+struct ClientImages: Codable, Sendable {
+    let poster: String?
+    let backdrop: String?
+    let titleLogo: String?
+    let studio: String?
+}
+
+struct ClientIdentifiers: Codable, Sendable {
+    let imdbId: String?
+}
+
+struct ClientPlayer: Codable, Sendable {
+    let hlsUrl: String
+    let directPlayUrl: String?
+}
+
+struct ClientRatings: Codable, Sendable {
+    let imdbCritics: Float?
+    let imdbUsers: Float?
+    let rtCritics: Int?
+    let rtAudience: Int?
+}
+
+struct ClientMoviesListResponse: Codable, Sendable {
+    let movies: [ClientMovieResponse]
+    let totalCount: Int
+}
+
+// MARK: - Client Playback DTOs
+struct ClientPlaybackStartPayload: Codable, Sendable {
+    let jellyfinId: String
+    let positionMs: Int?
+    let playMethod: String? // "DirectPlay" | "Transcode"
+    let audioStreamIndex: Int?
+    let subtitleStreamIndex: Int?
+}
+
+struct ClientPlaybackProgressPayload: Codable, Sendable {
+    let jellyfinId: String
+    let positionMs: Int
+    let isPaused: Bool?
+}
+
+struct ClientPlaybackStopPayload: Codable, Sendable {
+    let jellyfinId: String
+    let positionMs: Int?
+}
+
+struct SuccessResponse: Codable, Sendable { let success: Bool }
+
+// MARK: - Client Timeline DTOs
+struct ClientTimelineItem: Codable, Sendable {
+    let year: ClientTimelineYear
+    let movies: [ClientMovieResponse]
+}
+
+enum ClientTimelineYear: Codable, Sendable {
+    case known(Int)
+    case unknown
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let intVal = try? container.decode(Int.self) {
+            self = .known(intVal)
+            return
+        }
+        let strVal = try container.decode(String.self)
+        self = strVal.lowercased() == "unknown" ? .unknown : .known(Int(strVal) ?? 0)
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .known(let y):
+            try container.encode(y)
+        case .unknown:
+            try container.encode("unknown")
+        }
     }
 }
 

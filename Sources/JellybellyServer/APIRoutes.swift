@@ -44,6 +44,9 @@ final class APIRoutes: @unchecked Sendable {
 
         // Import/Export endpoints
         addImportExportRoutes(to: api)
+
+        // Clients endpoints
+        addClientRoutes(to: api)
     }
     
     // MARK: - Mood Routes
@@ -253,6 +256,70 @@ final class APIRoutes: @unchecked Sendable {
             let payload = try await request.decode(as: ImportPayload.self, context: context)
             try await self.movieService.importTagsMap(payload.map, replaceAll: payload.replaceAll ?? true)
             return try jsonResponse(["success": true])
+        }
+    }
+
+    // MARK: - Clients Routes
+    private func addClientRoutes(to router: RouterGroup<BasicRequestContext>) {
+        let clients = router.group("clients")
+        let movies = clients.group("movies")
+        let moods = clients.group("moods")
+        // GET /api/v1/clients/movies - Return all movies with client payload
+        movies.get { request, context in
+            // Return everything; include tags; no pagination as requested
+            return try jsonResponse(try await self.movieService.getClientMovies())
+        }
+
+        // GET /api/v1/clients/moods - list buckets
+        moods.get { request, context in
+            struct ClientMoods: Codable { let moods: [String: MoodBucket] }
+            return try jsonResponse(ClientMoods(moods: self.movieService.config.moodBuckets))
+        }
+
+        // GET /api/v1/clients/moods/:slug/movies - movies for mood
+        moods.get(":slug/movies") { request, context in
+            let slug = try context.parameters.require("slug")
+            return try jsonResponse(try await self.movieService.getClientMovies(withTag: String(slug)))
+        }
+
+        // GET /api/v1/clients/timeline - movies sorted by year ascending; unknown year last
+        clients.get("timeline") { request, context in
+            return try jsonResponse(try await self.movieService.getClientTimeline())
+        }
+
+        // Playback reporting proxies
+        struct StartPayload: Codable { let jellyfinId: String; let positionMs: Int?; let playMethod: String?; let audioStreamIndex: Int?; let subtitleStreamIndex: Int? }
+        clients.post("playback/start") { request, context in
+            let payload = try await request.decode(as: StartPayload.self, context: context)
+            try await self.movieService.jellyfinService.reportPlaybackStart(
+                itemId: payload.jellyfinId,
+                positionMs: payload.positionMs,
+                playMethod: payload.playMethod,
+                audioStreamIndex: payload.audioStreamIndex,
+                subtitleStreamIndex: payload.subtitleStreamIndex
+            )
+            return try jsonResponse(SuccessResponse(success: true))
+        }
+
+        struct ProgressPayload: Codable { let jellyfinId: String; let positionMs: Int; let isPaused: Bool? }
+        clients.post("playback/progress") { request, context in
+            let payload = try await request.decode(as: ProgressPayload.self, context: context)
+            try await self.movieService.jellyfinService.reportPlaybackProgress(
+                itemId: payload.jellyfinId,
+                positionMs: payload.positionMs,
+                isPaused: payload.isPaused
+            )
+            return try jsonResponse(SuccessResponse(success: true))
+        }
+
+        struct StopPayload: Codable { let jellyfinId: String; let positionMs: Int? }
+        clients.post("playback/stop") { request, context in
+            let payload = try await request.decode(as: StopPayload.self, context: context)
+            try await self.movieService.jellyfinService.reportPlaybackStopped(
+                itemId: payload.jellyfinId,
+                positionMs: payload.positionMs
+            )
+            return try jsonResponse(SuccessResponse(success: true))
         }
     }
     // MARK: - Settings Routes (BYOK)

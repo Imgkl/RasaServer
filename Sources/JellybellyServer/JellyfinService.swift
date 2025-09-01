@@ -107,13 +107,13 @@ final class JellyfinService: Sendable {
     
     // MARK: - Images
     
-    func getImageUrl(itemId: String, imageType: String = "Primary", maxWidth: Int? = nil, quality: Int? = 85) -> String {
+    func getImageUrl(itemId: String, imageType: String = "Primary", maxWidth: Int? = nil, quality: Int? = 100) -> String {
         var url = "\(baseURL)/Items/\(itemId)/Images/\(imageType)"
         
         var queryParams: [String] = []
-        if let maxWidth = maxWidth {
-            queryParams.append("maxWidth=\(maxWidth)")
-        }
+        // if let maxWidth = maxWidth {
+        //     queryParams.append("maxWidth=\(maxWidth)")
+        // }
         if let quality = quality {
             queryParams.append("quality=\(quality)")
         }
@@ -126,11 +126,25 @@ final class JellyfinService: Sendable {
     }
     
     func getPosterUrl(itemId: String) -> String {
-        getImageUrl(itemId: itemId, imageType: "Primary", maxWidth: 600)
+        getImageUrl(itemId: itemId, imageType: "Primary", quality: 100)
     }
     
     func getBackdropUrl(itemId: String) -> String {
-        getImageUrl(itemId: itemId, imageType: "Backdrop", maxWidth: 1920)
+        getImageUrl(itemId: itemId, imageType: "Backdrop", quality: 100)
+    }
+
+    func getLogoUrl(itemId: String) -> String {
+        getImageUrl(itemId: itemId, imageType: "Logo", maxWidth: 800)
+    }
+
+    func getStudioLogoUrl(studioId: String, maxWidth: Int? = nil, quality: Int? = 100) -> String {
+        // Most Jellyfin servers expose studio brand under Primary
+        var url = "\(baseURL)/Studios/\(studioId)/Images/Primary"
+        var query: [String] = []
+        if let maxWidth { query.append("maxWidth=\(maxWidth)") }
+        if let quality { query.append("quality=\(quality)") }
+        if !query.isEmpty { url += "?" + query.joined(separator: "&") }
+        return url
     }
     
     // MARK: - Playback
@@ -141,6 +155,63 @@ final class JellyfinService: Sendable {
     
     func getHlsStreamUrl(itemId: String) -> String {
         "\(baseURL)/Videos/\(itemId)/master.m3u8?api_key=\(apiKey)"
+    }
+
+    // MARK: - Playback Reporting (proxy-friendly helpers)
+    func reportPlaybackStart(itemId: String, positionMs: Int?, playMethod: String?, audioStreamIndex: Int?, subtitleStreamIndex: Int?) async throws {
+        let url = "\(baseURL)/Sessions/Playing"
+        var req = HTTPClientRequest(url: url)
+        req.method = .POST
+        req.headers.add(name: "X-MediaBrowser-Token", value: apiKey)
+        req.headers.add(name: "Accept", value: "application/json")
+        req.headers.add(name: "Content-Type", value: "application/json")
+        let payload: [String: Any?] = [
+            "ItemId": itemId,
+            "CanSeek": true,
+            "PlayMethod": playMethod ?? "DirectPlay",
+            "PositionTicks": positionMs.map { Int64($0) * 10_000 },
+            "AudioStreamIndex": audioStreamIndex,
+            "SubtitleStreamIndex": subtitleStreamIndex
+        ]
+        let data = try JSONSerialization.data(withJSONObject: payload.compactMapValues { $0 }, options: [])
+        req.body = .bytes(data)
+        let resp = try await httpClient.execute(req, timeout: .seconds(8))
+        guard resp.status == .ok else { throw JellyfinError.httpError(resp.status.code, "Playback start report failed") }
+    }
+
+    func reportPlaybackProgress(itemId: String, positionMs: Int, isPaused: Bool?) async throws {
+        let url = "\(baseURL)/Sessions/Playing/Progress"
+        var req = HTTPClientRequest(url: url)
+        req.method = .POST
+        req.headers.add(name: "X-MediaBrowser-Token", value: apiKey)
+        req.headers.add(name: "Accept", value: "application/json")
+        req.headers.add(name: "Content-Type", value: "application/json")
+        let payload: [String: Any] = [
+            "ItemId": itemId,
+            "PositionTicks": Int64(positionMs) * 10_000,
+            "IsPaused": isPaused ?? false
+        ]
+        let data = try JSONSerialization.data(withJSONObject: payload, options: [])
+        req.body = .bytes(data)
+        let resp = try await httpClient.execute(req, timeout: .seconds(8))
+        guard resp.status == .ok else { throw JellyfinError.httpError(resp.status.code, "Playback progress report failed") }
+    }
+
+    func reportPlaybackStopped(itemId: String, positionMs: Int?) async throws {
+        let url = "\(baseURL)/Sessions/Playing/Stopped"
+        var req = HTTPClientRequest(url: url)
+        req.method = .POST
+        req.headers.add(name: "X-MediaBrowser-Token", value: apiKey)
+        req.headers.add(name: "Accept", value: "application/json")
+        req.headers.add(name: "Content-Type", value: "application/json")
+        let payload: [String: Any?] = [
+            "ItemId": itemId,
+            "PositionTicks": positionMs.map { Int64($0) * 10_000 }
+        ]
+        let data = try JSONSerialization.data(withJSONObject: payload.compactMapValues { $0 }, options: [])
+        req.body = .bytes(data)
+        let resp = try await httpClient.execute(req, timeout: .seconds(8))
+        guard resp.status == .ok else { throw JellyfinError.httpError(resp.status.code, "Playback stop report failed") }
     }
     
     // MARK: - Server Info

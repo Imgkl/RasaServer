@@ -477,6 +477,101 @@ final class MovieService {
                 )
             } ?? []
     }
+
+    // MARK: - Clients API helpers
+    func getClientMovies() async throws -> ClientMoviesListResponse {
+        // Fetch all movies with tags
+        let movies = try await Movie.query(on: fluent.db())
+            .with(\.$tags)
+            .sort(\.$title)
+            .all()
+        let total = movies.count
+        let items = movies.map { m in buildClientMovie(from: m) }
+        return ClientMoviesListResponse(movies: items, totalCount: total)
+    }
+
+    func getClientMovies(withTag tagSlug: String) async throws -> ClientMoviesListResponse {
+        guard config.moodBuckets[tagSlug] != nil else {
+            throw MovieServiceError.tagNotFound(tagSlug)
+        }
+        let tag = try await Tag.query(on: fluent.db())
+            .filter(\.$slug == tagSlug)
+            .first()
+            .unwrap(orError: MovieServiceError.tagNotFound(tagSlug))
+        let movies = try await Movie.query(on: fluent.db())
+            .join(MovieTag.self, on: \Movie.$id == \MovieTag.$movie.$id)
+            .filter(MovieTag.self, \.$tag.$id == tag.requireID())
+            .with(\.$tags)
+            .sort(\.$title)
+            .all()
+        let items = movies.map { m in buildClientMovie(from: m) }
+        return ClientMoviesListResponse(movies: items, totalCount: items.count)
+    }
+
+    func getClientTimeline() async throws -> [ClientTimelineItem] {
+        // Fetch all with tags
+        let movies = try await Movie.query(on: fluent.db())
+            .with(\.$tags)
+            .all()
+        // Group by year (unknown grouped under nil)
+        var groups: [Int?: [Movie]] = [:]
+        for m in movies {
+            groups[m.year, default: []].append(m)
+        }
+        // Sort groups by year asc with unknown last
+        let orderedYears: [Int?] = groups.keys.sorted { a, b in
+            switch (a, b) {
+            case let (ya?, yb?): return ya < yb
+            case (nil, _?): return false
+            case (_?, nil): return true
+            default: return false
+            }
+        }
+        // Build response with per-year movies sorted by title
+        var timeline: [ClientTimelineItem] = []
+        for key in orderedYears {
+            let bucket = (groups[key] ?? []).sorted { $0.title < $1.title }
+            let moviesOut = bucket.map { buildClientMovie(from: $0) }
+            let yearOut: ClientTimelineYear = key == nil ? .unknown : .known(key!)
+            timeline.append(ClientTimelineItem(year: yearOut, movies: moviesOut))
+        }
+        // Ensure unknown group exists at end even if empty? Not required; only include present groups
+        return timeline
+    }
+
+    private func buildClientMovie(from movie: Movie) -> ClientMovieResponse {
+        let imdbId = movie.jellyfinMetadata?.providerIds?["Imdb"] ?? movie.jellyfinMetadata?.providerIds?["IMDb"]
+        let direct = jellyfinService.getStreamUrl(itemId: movie.jellyfinId)
+        let hls = jellyfinService.getHlsStreamUrl(itemId: movie.jellyfinId)
+        let studioLogo: String? = {
+            if let first = movie.jellyfinMetadata?.studios?.first {
+                return jellyfinService.getStudioLogoUrl(studioId: first.id)
+            }
+            return nil
+        }()
+        let images = ClientImages(
+            poster: jellyfinService.getPosterUrl(itemId: movie.jellyfinId),
+            backdrop: jellyfinService.getBackdropUrl(itemId: movie.jellyfinId),
+            titleLogo: jellyfinService.getLogoUrl(itemId: movie.jellyfinId),
+            studio: studioLogo
+        )
+        let player = ClientPlayer(hlsUrl: hls, directPlayUrl: direct)
+        let identifiers = ClientIdentifiers(imdbId: imdbId)
+        let ratings: ClientRatings? = nil // client will fill via OMDb
+        return ClientMovieResponse(
+            id: movie.id,
+            jellyfinId: movie.jellyfinId,
+            title: movie.title,
+            year: movie.year,
+            runtime: movie.runtimeMinutes,
+            description: movie.overview,
+            images: images,
+            tags: movie.tags.map(TagResponse.init),
+            identifiers: identifiers,
+            player: player,
+            ratings: ratings
+        )
+    }
     
     // MARK: - Maintenance
     func resetAllTags() async throws {
