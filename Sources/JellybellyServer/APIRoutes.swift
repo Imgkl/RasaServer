@@ -273,6 +273,12 @@ final class APIRoutes: @unchecked Sendable {
             return try jsonResponse(["success": true])
         }
 
+        // Maintenance: clear all movies
+        settings.post("clear-movies") { request, context in
+            try await self.movieService.clearAllMovies()
+            return try jsonResponse(["success": true])
+        }
+
         // Jellyfin config save
         struct JellyfinPayload: Codable {
             let jellyfin_url: String?

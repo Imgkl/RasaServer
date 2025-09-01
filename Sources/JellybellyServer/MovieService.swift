@@ -493,6 +493,21 @@ final class MovieService {
         }
     }
 
+    /// Delete all movies and their tag relations; reset tag usage counts.
+    func clearAllMovies() async throws {
+        // Delete all pivots first to avoid orphans
+        try await MovieTag.query(on: fluent.db()).delete()
+        // Delete all movies
+        try await Movie.query(on: fluent.db()).delete()
+        // Reset tag usage counts
+        let allTags = try await Tag.query(on: fluent.db()).all()
+        for tag in allTags {
+            tag.usageCount = 0
+            try await tag.save(on: fluent.db())
+        }
+        logger.info("Cleared all movies and reset tag usage counts")
+    }
+
     // MARK: - Export/Import
     func exportTagsMap() async throws -> [String: ExportMovieTags] {
         let movies = try await Movie.query(on: fluent.db())
@@ -582,6 +597,8 @@ final class MovieService {
                 }
             }
             stats.moviesFound = jellyfinMovies.count
+            // Publish initial totals so clients can compute progress
+            self.lastSyncStats = stats
             
             for jellyfinMovie in jellyfinMovies {
                 do {
@@ -605,6 +622,8 @@ final class MovieService {
                         
                         try await existing.save(on: fluent.db())
                         stats.moviesUpdated += 1
+                        // Publish progress after each update
+                        self.lastSyncStats = stats
                     } else {
                         // Create new movie
                         let movie = jellyfinMovie.toMovie()
@@ -613,10 +632,14 @@ final class MovieService {
                         
                         try await movie.save(on: fluent.db())
                         stats.moviesUpdated += 1
+                        // Publish progress after each creation
+                        self.lastSyncStats = stats
                     }
                 } catch {
                     stats.errors.append("Failed to sync movie \(jellyfinMovie.name): \(error)")
                     logger.error("Failed to sync movie \(jellyfinMovie.name): \(error)")
+                    // Publish errors as they happen
+                    self.lastSyncStats = stats
                 }
             }
             // Delete movies that no longer exist in Jellyfin
@@ -632,10 +655,13 @@ final class MovieService {
                         let title = movie.title
                         try await movie.delete(on: fluent.db())
                         stats.moviesDeleted += 1
+                        // Publish progress as deletions complete
+                        self.lastSyncStats = stats
                         logger.info("Deleted movie '\(title)' (jellyfinId=\(movie.jellyfinId)) from local DB")
                     } catch {
                         stats.errors.append("Failed to delete movie \(movie.jellyfinId): \(error)")
                         logger.error("Failed to delete orphaned movie \(movie.jellyfinId): \(error)")
+                        self.lastSyncStats = stats
                     }
                 }
                 // Recalculate tag usage counts since pivots may have been removed via cascade

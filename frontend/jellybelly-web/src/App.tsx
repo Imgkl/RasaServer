@@ -1,9 +1,28 @@
 import { motion } from 'framer-motion';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+
+
+
 type Tag = { id?: string; slug: string; title: string }
 type Movie = { id: string; title: string; posterUrl?: string; overview?: string; tags?: Tag[] }
 type MoodBuckets = Record<string, { title: string, description: string }>
+type SyncStatus = {
+  isRunning: boolean
+  lastSyncAt?: string
+  lastSyncDuration?: number
+  moviesFound: number
+  moviesUpdated: number
+  moviesDeleted: number
+  errors: string[]
+}
+type ImportProgress = {
+  total: number
+  processed: number
+  success: number
+  fail: number
+  running: boolean
+}
 
 const API = '/api/v1'
 
@@ -24,6 +43,11 @@ export default function App() {
   const [autoQueue, setAutoQueue] = useState<string[]>([])
   const [currentAutoId, setCurrentAutoId] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null)
+  const [syncActive, setSyncActive] = useState(false)
+  const syncTimerRef = useRef<number | null>(null)
+  const syncStartTsRef = useRef<number | null>(null)
+  const [importProg, setImportProg] = useState<ImportProgress | null>(null)
   // Removed old batch tagging flow to simplify UI
   const importInputRef = useRef<HTMLInputElement>(null)
 
@@ -92,15 +116,45 @@ export default function App() {
     }
   }
 
-  async function syncAll() {
-    setLoading(true)
+  async function pollSyncStatusOnce() {
     try {
-      await api('/sync/jellyfin', { method: 'POST' })
-      await fetchAllMovies()
+      const status = await api<SyncStatus>("/sync/status");
+      setSyncStatus(status);
+
+      const startedAt = syncStartTsRef.current || 0;
+      const withinGrace = Date.now() - startedAt < 12000; // 12s grace
+
+      // Drive visibility directly from status/grace
+      setSyncActive(status.isRunning || withinGrace);
+
+      if (!status.isRunning && !withinGrace) {
+        setLoading(false);
+        if (syncTimerRef.current) {
+          window.clearTimeout(syncTimerRef.current);
+          syncTimerRef.current = null;
+        }
+        await fetchAllMovies();
+        return;
+      }
+    } catch {
+      // keep polling on transient errors
+    }
+    // schedule next tick
+    syncTimerRef.current = window.setTimeout(pollSyncStatusOnce, 1000);
+  }
+
+  async function syncAll() {
+    try {
+      setSyncActive(true)
+      setSyncStatus({ isRunning: true, lastSyncAt: undefined, lastSyncDuration: undefined, moviesFound: 0, moviesUpdated: 0, moviesDeleted: 0, errors: [] })
+      syncStartTsRef.current = Date.now()
+      // fire-and-forget start; show banner immediately and poll
+      fetch(API + '/sync/jellyfin', { method: 'POST', headers: { 'Content-Type': 'application/json' } }).catch(() => {})
+      if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current)
+      pollSyncStatusOnce()
     } catch (error) {
       console.error('Failed to sync:', error)
-    } finally {
-      setLoading(false)
+      setSyncActive(false)
     }
   }
 
@@ -218,12 +272,35 @@ export default function App() {
 
   async function importTagsFile(file: File) {
     try {
+      // Close settings so the unified progress banner is visible
+      setSettingsOpen(false)
       const text = await file.text()
       const map = JSON.parse(text)
-      await api('/data/import', { method: 'POST', body: JSON.stringify({ map, replaceAll: true }) })
+      const keys = Object.keys(map || {})
+      const total = keys.length
+      const batchSize = 1
+      let processed = 0
+      let success = 0
+      let fail = 0
+      setImportProg({ total, processed, success, fail, running: true })
+      for (let i = 0; i < keys.length; i += batchSize) {
+        const chunkKeys = keys.slice(i, i + batchSize)
+        const chunk: Record<string, any> = {}
+        for (const k of chunkKeys) chunk[k] = map[k]
+        try {
+          await api('/data/import', { method: 'POST', body: JSON.stringify({ map: chunk, replaceAll: true }) })
+          success += chunkKeys.length
+        } catch {
+          fail += chunkKeys.length
+        }
+        processed += chunkKeys.length
+        setImportProg({ total, processed, success, fail, running: true })
+      }
+      setImportProg(p => p ? { ...p, running: false } : { total, processed, success, fail, running: false })
       await fetchAllMovies()
-      alert('Import complete')
+      setTimeout(() => setImportProg(null), 1500)
     } catch (e) {
+      setImportProg(null)
       alert('Import failed – ensure it is a valid JSON export')
     }
   }
@@ -317,7 +394,6 @@ export default function App() {
                     >
                       {loading ? "Syncing…" : "Sync Library"}
                     </button>
-                    {/* Import/Export moved to Settings */}
                     <input
                       ref={importInputRef}
                       type="file"
@@ -410,8 +486,7 @@ export default function App() {
 
           {/* Movies Grid */}
           <main className="px-3 sm:px-6 py-6">
-            <div className="mx-auto w-full max-w-[1600px] grid gap-5 [grid-template-columns:repeat(auto-fill,minmax(180px,1fr))]">
-
+            <div className="mx-auto w-full max-w-[1600px] grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(140px,1fr))] sm:[grid-template-columns:repeat(auto-fill,minmax(180px,1fr))]">
               {ordered.map((m, idx) => {
                 const chips = m.tags || [];
                 return (
@@ -424,16 +499,6 @@ export default function App() {
                       delay: Math.min(idx * 0.015, 0.25),
                       duration: 0.3,
                       ease: "easeOut",
-                    }}
-                    style={{
-                      marginTop:
-                        idx % 4 === 1
-                          ? 14
-                          : idx % 4 === 2
-                          ? 28
-                          : idx % 4 === 3
-                          ? 8
-                          : 0,
                     }}
                   >
                     <motion.div
@@ -552,6 +617,46 @@ export default function App() {
         </div>
       </div>
 
+      {/* Sync progress banner */}
+      {syncActive && (
+        <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-[9999]">
+          <div className="px-4 py-2 rounded-full bg-white shadow-lg border border-black/10 text-sm text-[#0f1222] flex items-center gap-2">
+            <span className="inline-block w-3.5 h-3.5 border-2 border-black/20 border-t-black rounded-full animate-spin" />
+            <span>Syncing Jellyfin…</span>
+          </div>
+        </div>
+      )}
+
+      {importProg && (
+        <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-50 w-[92%] sm:w-[640px] max-w-full rounded-2xl bg-white shadow-xl border border-black/10 p-4">
+          <div className="text-sm font-medium text-[#0f1222] mb-2">
+            Importing tags…
+          </div>
+          <div className="text-xs text-black/60 mb-2 flex gap-3">
+            <span>Identified: {importProg.total}</span>
+            <span>Processed: {importProg.processed}</span>
+            <span>Success: {importProg.success}</span>
+            <span>Failed: {importProg.fail}</span>
+          </div>
+          <div className="w-full h-2 rounded-full bg-black/10 overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-indigo-600 to-fuchsia-600"
+              style={{
+                width: `${Math.min(
+                  100,
+                  Math.round(
+                    (importProg.processed / Math.max(1, importProg.total)) * 100
+                  )
+                )}%`,
+              }}
+            />
+          </div>
+          {!importProg.running && (
+            <div className="mt-2 text-[11px] text-emerald-700">Completed</div>
+          )}
+        </div>
+      )}
+
       {/* Settings Modal */}
       {settingsOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
@@ -568,7 +673,10 @@ export default function App() {
             <div className="space-y-6">
               <button
                 className="w-full px-4 py-3 rounded-xl bg-[#0f1222] text-white hover:bg-black"
-                onClick={syncAll}
+                onClick={() => {
+                  setSettingsOpen(false);
+                  syncAll();
+                }}
                 disabled={loading}
               >
                 {loading ? "Syncing…" : "Sync Library"}
@@ -588,6 +696,26 @@ export default function App() {
                 }}
               >
                 AI Auto Tagger
+              </button>
+              <button
+                className="w-full px-4 py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white"
+                onClick={async () => {
+                  if (
+                    !confirm(
+                      "This will delete all movies from Jellybelly (not Jellyfin) and reset tag usage counts. Continue?"
+                    )
+                  )
+                    return;
+                  try {
+                    await api("/settings/clear-movies", { method: "POST" });
+                    setSettingsOpen(false);
+                    await fetchAllMovies();
+                  } catch (e) {
+                    alert("Failed to clear movies");
+                  }
+                }}
+              >
+                Clear Local Movies
               </button>
               <button
                 className="w-full px-4 py-3 rounded-xl bg-white text-[#0f1222] border border-black/10 hover:bg-gray-50"
