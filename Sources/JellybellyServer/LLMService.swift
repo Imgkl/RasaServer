@@ -73,7 +73,7 @@ final class LLMService: Sendable {
             messages: [
                 AnthropicMessage(
                     role: "user",
-                    content: prompt
+                    content: [AnthropicContent(type: "text", text: prompt)]
                 )
             ],
             system: "You are a film expert helping categorize movies by mood. Return only valid JSON."
@@ -88,7 +88,13 @@ final class LLMService: Sendable {
         let jsonData = try JSONEncoder().encode(requestBody)
         request.body = .bytes(jsonData)
         
-        let response = try await httpClient.execute(request, timeout: .seconds(30))
+        let response: HTTPClientResponse
+        do {
+            response = try await httpClient.execute(request, timeout: .seconds(45))
+        } catch {
+            // Map low-level HTTP client errors to an LLMError so middleware returns a clean 502
+            throw LLMError.httpError(502, "Network error contacting Anthropic: \(error.localizedDescription)")
+        }
         
         guard response.status == .ok else {
             throw LLMError.httpError(response.status.code, "Anthropic API error")
@@ -107,7 +113,7 @@ final class LLMService: Sendable {
     // MARK: - Prompt Building
     
     private func buildMovieContext(movie: Movie) -> String {
-        var context = [
+        let context = [
             "Title: \(movie.title)",
             movie.originalTitle.map { "Original Title: \($0)" },
             movie.year.map { "Year: \($0)" },
@@ -302,7 +308,7 @@ struct AnthropicRequest: Codable {
 
 struct AnthropicMessage: Codable {
     let role: String
-    let content: String
+    let content: [AnthropicContent]
 }
 
 struct AnthropicResponse: Codable {

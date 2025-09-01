@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 
 type Tag = { id?: string; slug: string; title: string }
-type Movie = { id: string; title: string; posterUrl?: string; overview?: string; tags?: Tag[] }
+type Movie = { id: string; jellyfinId: string; title: string; posterUrl?: string; tags?: Tag[] }
 type MoodBuckets = Record<string, { title: string, description: string }>
 type SyncStatus = {
   isRunning: boolean
@@ -43,7 +43,6 @@ export default function App() {
   const [autoQueue, setAutoQueue] = useState<string[]>([])
   const [currentAutoId, setCurrentAutoId] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null)
   const [syncActive, setSyncActive] = useState(false)
   const syncTimerRef = useRef<number | null>(null)
   const syncStartTsRef = useRef<number | null>(null)
@@ -119,7 +118,7 @@ export default function App() {
   async function pollSyncStatusOnce() {
     try {
       const status = await api<SyncStatus>("/sync/status");
-      setSyncStatus(status);
+      // setSyncStatus(status);
 
       const startedAt = syncStartTsRef.current || 0;
       const withinGrace = Date.now() - startedAt < 12000; // 12s grace
@@ -146,7 +145,6 @@ export default function App() {
   async function syncAll() {
     try {
       setSyncActive(true)
-      setSyncStatus({ isRunning: true, lastSyncAt: undefined, lastSyncDuration: undefined, moviesFound: 0, moviesUpdated: 0, moviesDeleted: 0, errors: [] })
       syncStartTsRef.current = Date.now()
       // fire-and-forget start; show banner immediately and poll
       fetch(API + '/sync/jellyfin', { method: 'POST', headers: { 'Content-Type': 'application/json' } }).catch(() => {})
@@ -318,7 +316,7 @@ export default function App() {
 
   const filtered = useMemo(() => {
     return movies.filter(m => (
-      (!q || m.title.toLowerCase().includes(q.toLowerCase()) || (m.overview||'').toLowerCase().includes(q.toLowerCase())) &&
+      (!q || m.title.toLowerCase().includes(q.toLowerCase())) &&
       (!mood || (m.tags||[]).some(t => t.slug === mood))
     ))
   }, [movies, q, mood])
@@ -842,9 +840,7 @@ export default function App() {
                     </svg>
                   </button>
                 </div>
-                <p className="text-sm text-gray-600 whitespace-pre-line mb-4 max-h-40 overflow-y-auto">
-                  {currentAutoMovie.overview || "No description available."}
-                </p>
+                {/* Description intentionally not shown to keep frontend minimal */}
 
                 <div className="rounded-xl border border-gray-200 p-4 bg-gray-50">
                   <div className="text-xs text-gray-500 mb-2">

@@ -302,35 +302,15 @@ struct MovieResponse: Codable, Sendable {
     let id: UUID?
     let jellyfinId: String
     let title: String
-    let originalTitle: String?
-    let year: Int?
-    let overview: String?
-    let runtimeMinutes: Int?
-    let genres: [String]
-    let director: String?
-    let cast: [String]
     let posterUrl: String?
-    let backdropUrl: String?
     let tags: [TagResponse]
-    let createdAt: Date?
-    let updatedAt: Date?
     
     init(movie: Movie, tags: [Tag] = []) {
         self.id = movie.id
         self.jellyfinId = movie.jellyfinId
         self.title = movie.title
-        self.originalTitle = movie.originalTitle
-        self.year = movie.year
-        self.overview = movie.overview
-        self.runtimeMinutes = movie.runtimeMinutes
-        self.genres = movie.genres
-        self.director = movie.director
-        self.cast = movie.cast
         self.posterUrl = movie.posterUrl
-        self.backdropUrl = movie.backdropUrl
         self.tags = tags.map(TagResponse.init)
-        self.createdAt = movie.createdAt
-        self.updatedAt = movie.updatedAt
     }
 }
 

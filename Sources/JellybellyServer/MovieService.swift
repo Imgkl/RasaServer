@@ -373,12 +373,9 @@ final class MovieService {
     
     func searchMovies(query: String, limit: Int = 20, includeTags: Bool = false) async throws -> MoviesListResponse {
         let searchQuery = Movie.query(on: fluent.db())
-        // Search in title, original title, director, and overview
+        // Search only in title
         searchQuery.group(.or) { group in
             group.filter(\.$title ~~ query)
-            group.filter(\.$originalTitle ~~ query)
-            group.filter(\.$director ~~ query)
-            group.filter(\.$overview ~~ query)
         }
         
         if includeTags {
