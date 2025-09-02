@@ -264,6 +264,11 @@ final class APIRoutes: @unchecked Sendable {
         let clients = router.group("clients")
         let movies = clients.group("movies")
         let moods = clients.group("moods")
+        // GET /api/v1/clients/ping - Simple connectivity check for clients
+        clients.get("ping") { request, context in
+            struct ClientPingResponse: Codable { let success: Bool}
+            return try jsonResponse(ClientPingResponse(success: true))
+        }
         // GET /api/v1/clients/movies - Return all movies with client payload
         movies.get { request, context in
             // Return everything; include tags; no pagination as requested
