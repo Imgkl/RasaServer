@@ -334,6 +334,18 @@ struct MovieResponse: Codable, Sendable {
     }
 }
 
+struct MinimalTagResponse: Codable, Sendable {
+    let slug: String
+    let title: String
+}
+
+extension MinimalTagResponse {
+    init(tag: Tag) {
+        self.slug = tag.slug
+        self.title = tag.title
+    }
+}
+
 struct TagResponse: Codable, Sendable {
     let id: UUID?
     let slug: String
@@ -358,13 +370,12 @@ struct ClientMovieResponse: Codable, Sendable {
     let jellyfinId: String
     let title: String
     let year: Int?
-    let runtime: Int?
+    let runtime: String?
     let description: String?
     let images: ClientImages
-    let tags: [TagResponse]
-    let identifiers: ClientIdentifiers
+    let tags: [MinimalTagResponse]
+    let imdbId: String?
     let player: ClientPlayer
-    let ratings: ClientRatings?
 }
 
 struct ClientImages: Codable, Sendable {
@@ -374,21 +385,14 @@ struct ClientImages: Codable, Sendable {
     let studio: String?
 }
 
-struct ClientIdentifiers: Codable, Sendable {
-    let imdbId: String?
-}
+
 
 struct ClientPlayer: Codable, Sendable {
     let hlsUrl: String
     let directPlayUrl: String?
 }
 
-struct ClientRatings: Codable, Sendable {
-    let imdbCritics: Float?
-    let imdbUsers: Float?
-    let rtCritics: Int?
-    let rtAudience: Int?
-}
+
 
 struct ClientMoviesListResponse: Codable, Sendable {
     let movies: [ClientMovieResponse]
