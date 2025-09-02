@@ -323,6 +323,7 @@ struct MovieResponse: Codable, Sendable {
     let jellyfinId: String
     let title: String
     let posterUrl: String?
+    let isWatched: Bool
     let tags: [TagResponse]
     
     init(movie: Movie, tags: [Tag] = []) {
@@ -330,6 +331,7 @@ struct MovieResponse: Codable, Sendable {
         self.jellyfinId = movie.jellyfinId
         self.title = movie.title
         self.posterUrl = movie.posterUrl
+        self.isWatched = movie.jellyfinMetadata?.userData?.played ?? false
         self.tags = tags.map(TagResponse.init)
     }
 }
@@ -376,6 +378,9 @@ struct ClientMovieResponse: Codable, Sendable {
     let tags: [MinimalTagResponse]
     let imdbId: String?
     let player: ClientPlayer
+    let isWatched: Bool
+    let progressMs: Int?
+    let progressPercent: Float?
 }
 
 struct ClientImages: Codable, Sendable {

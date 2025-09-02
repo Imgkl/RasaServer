@@ -586,6 +586,15 @@ final class MovieService {
       studio: studioLogo
     )
     let player = ClientPlayer(hlsUrl: hls, directPlayUrl: direct)
+    // Compute progress metrics from Jellyfin ticks
+    let ticks = movie.jellyfinMetadata?.userData?.playbackPositionTicks ?? 0
+    let progressMs: Int? = ticks > 0 ? Int(ticks / 10_000) : nil // 1 tick = 100ns
+    let totalMs: Int? = (movie.jellyfinMetadata?.runTimeTicks).map { Int($0 / 10_000) }
+    let progressPercent: Float? = {
+      guard let p = progressMs, let t = totalMs, t > 0 else { return nil }
+      return min(100, max(0, (Float(p) / Float(t)) * 100))
+    }()
+
     return ClientMovieResponse(
       id: movie.id,
       jellyfinId: movie.jellyfinId,
@@ -597,6 +606,9 @@ final class MovieService {
       tags: movie.tags.map(MinimalTagResponse.init),
       imdbId: imdbId,
       player: player,
+      isWatched: movie.jellyfinMetadata?.userData?.played ?? false,
+      progressMs: progressMs,
+      progressPercent: progressPercent
     )
   }
 
