@@ -10,6 +10,7 @@ ARG NODE_VERSION=20
 ARG UBUNTU_VERSION=jammy
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
+ARG JELLYBELLY_VERSION=dev
 
 # ==============================================================================
 # Stage 1: Frontend Build (from frontend/ directory)
@@ -93,6 +94,9 @@ RUN strip .build/release/JellybellyServer || true && \
 # ==============================================================================
 FROM swift:${SWIFT_VERSION}-${UBUNTU_VERSION}-slim
 
+# Bring build args into this stage
+ARG JELLYBELLY_VERSION
+
 # Install runtime dependencies
 RUN export DEBIAN_FRONTEND=noninteractive && \
     apt-get update && \
@@ -156,6 +160,7 @@ ENV JELLYBELLY_HOST=0.0.0.0
 ENV JELLYBELLY_PORT=3242
 ENV WEBUI_PORT=3242
 ENV JELLYBELLY_DATABASE_PATH=/app/data/jellybelly.sqlite
+ENV JELLYBELLY_VERSION=${JELLYBELLY_VERSION}
 
 # Swift runtime optimizations
 ENV SWIFT_DETERMINISTIC_HASHING=1
@@ -177,6 +182,7 @@ LABEL org.opencontainers.image.vendor="JellyBelly Project"
 LABEL org.opencontainers.image.port="3242"
 LABEL org.opencontainers.image.source="https://github.com/Imgkl/JellyBellyServer"
 LABEL org.opencontainers.image.documentation="https://github.com/Imgkl/JellyBellyServer/blob/main/README.md"
+LABEL org.opencontainers.image.version="${JELLYBELLY_VERSION}"
 
 # Health check configuration
 HEALTHCHECK --interval=30s \

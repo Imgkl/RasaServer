@@ -1,5 +1,8 @@
 SHELL := /bin/bash
 
+# Git tag for versioning Docker images (fallback to "dev" if no tags)
+VERSION ?= $(shell git describe --tags --abbrev=0 2>/dev/null || echo dev)
+
 .PHONY: web build package docker clean
 
 web:
@@ -12,7 +15,7 @@ package: web build
 	mkdir -p release && cp .build/release/JellybellyServer release/ && cp -R public release/public
 
 docker:
-	docker build -t jellybelly:latest .
+	docker build --build-arg JELLYBELLY_VERSION=$(VERSION) -t jellybelly:$(VERSION) -t jellybelly:latest .
 
 clean:
 	rm -rf .build public release jellybelly.sqlite secrets
@@ -90,11 +93,11 @@ test-unit:
 # Docker commands
 docker-build:
 	@echo "🐳 Building Docker image..."
-	docker build -t jellybelly-server:latest .
+	docker build --build-arg JELLYBELLY_VERSION=$(VERSION) -t jellybelly-server:$(VERSION) -t jellybelly-server:latest .
 
 docker-build-pi:
 	@echo "🫐 Building Docker image for Raspberry Pi (ARM64)..."
-	docker buildx build --platform linux/arm64 -t jellybelly-server:arm64 .
+	docker buildx build --platform linux/arm64 --build-arg JELLYBELLY_VERSION=$(VERSION) -t jellybelly-server:arm64-$(VERSION) -t jellybelly-server:arm64-latest .
 
 docker-run: docker-build
 	@echo "🐳 Running Docker container..."
@@ -110,7 +113,7 @@ deploy-pi:
 deploy-prod:
 	@echo "🚀 Building multi-architecture images..."
 	docker buildx create --use --name jellybelly-builder || true
-	docker buildx build --platform linux/amd64,linux/arm64 -t jellybelly-server:latest --push .
+	docker buildx build --platform linux/amd64,linux/arm64 --build-arg JELLYBELLY_VERSION=$(VERSION) -t jellybelly-server:$(VERSION) -t jellybelly-server:latest --push .
 	docker-compose -f docker-compose.prod.yml up -d
 
 docker-logs:

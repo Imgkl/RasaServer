@@ -49,6 +49,7 @@ export default function App() {
   const [importProg, setImportProg] = useState<ImportProgress | null>(null)
   // Removed old batch tagging flow to simplify UI
   const importInputRef = useRef<HTMLInputElement>(null)
+  const [version, setVersion] = useState<string>("")
 
   // Emoji map for moods (fallback to 🎬)
   const moodEmojiMap = useMemo<Record<string, string>>(() => ({
@@ -89,7 +90,7 @@ export default function App() {
     return moodEmojiMap[key] || '🎬'
   }
 
-  useEffect(() => { fetchMoods(); fetchAllMovies() }, [])
+  useEffect(() => { fetchMoods(); fetchAllMovies(); fetchVersion() }, [])
 
   async function api<T>(path: string, init?: RequestInit): Promise<T> {
     const res = await fetch(API + path, { headers: { 'Content-Type': 'application/json' }, ...init })
@@ -113,6 +114,15 @@ export default function App() {
     } finally {
       setLoading(false)
     }
+  }
+
+  async function fetchVersion() {
+    try {
+      const res = await fetch('/version', { headers: { 'Content-Type': 'application/json' } })
+      if (!res.ok) return
+      const j = await res.json()
+      if (j && typeof j.version === 'string') setVersion(j.version)
+    } catch {}
   }
 
   async function pollSyncStatusOnce() {
@@ -384,7 +394,7 @@ export default function App() {
                       </span>
                     </p>
                   </div>
-                  <div className="hidden sm:flex items-center gap-2">
+                  <div className="hidden sm:flex items-center gap-3">
                     <button
                       className="px-4 py-2.5 bg-[#0f1222] hover:bg-black text-white rounded-full text-sm transition disabled:opacity-50"
                       onClick={syncAll}
@@ -751,6 +761,11 @@ export default function App() {
               <div className="border-t border-black/10 pt-4">
                 <JellyfinSetup />
               </div>
+              {version && (
+                <div className="pt-2 text-center text-xs text-black/50">
+                  v{version}
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -20,6 +20,12 @@ final class APIRoutes: @unchecked Sendable {
     func addRoutes(to router: Router<BasicRequestContext>) {
         // Health check
         router.get("/health") { _, _ in Response(status: .ok) }
+        // Version endpoint
+        router.get("/version") { _, _ in
+            struct VersionResponse: Codable { let version: String }
+            let v = ProcessInfo.processInfo.environment["JELLYBELLY_VERSION"] ?? "dev"
+            return try jsonResponse(VersionResponse(version: v))
+        }
         
         // API v1 routes
         let api = router.group("api/v1")
