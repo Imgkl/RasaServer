@@ -286,7 +286,13 @@ Form-first filmmaking—structure, sound, or image pushed into new shapes. Narra
         )
     ]
 
-    init() {}
+    init() {
+        if let path = ProcessInfo.processInfo.environment["JELLYBELLY_DATABASE_PATH"], !path.isEmpty {
+            self.databasePath = path
+        } else {
+            self.databasePath = "/app/data/jellybelly.sqlite"
+        }
+    }
     
     static func load(from path: String = "config.yaml") throws -> JellybellyConfiguration {
         let config = JellybellyConfiguration()
