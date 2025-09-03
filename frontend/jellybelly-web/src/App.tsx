@@ -763,7 +763,7 @@ export default function App() {
               </div>
               {version && (
                 <div className="pt-2 text-center text-xs text-black/50">
-                  v{version}
+                  {version}
                 </div>
               )}
             </div>
