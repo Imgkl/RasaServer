@@ -387,7 +387,6 @@ struct ClientImages: Codable, Sendable {
     let poster: String?
     let backdrop: String?
     let titleLogo: String?
-    let studio: String?
 }
 
 

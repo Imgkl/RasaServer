@@ -573,22 +573,14 @@ final class MovieService {
       movie.jellyfinMetadata?.providerIds?["Imdb"] ?? movie.jellyfinMetadata?.providerIds?["IMDb"]
     let direct = jellyfinService.getStreamUrl(itemId: movie.jellyfinId)
     let hls = jellyfinService.getHlsStreamUrl(itemId: movie.jellyfinId)
-    let studioLogo: String? = {
-      if let first = movie.jellyfinMetadata?.studios?.first {
-        return jellyfinService.getStudioLogoUrl(studioId: first.id)
-      }
-      return nil
-    }()
     let images = ClientImages(
       poster: jellyfinService.getPosterUrl(itemId: movie.jellyfinId),
       backdrop: jellyfinService.getBackdropUrl(itemId: movie.jellyfinId),
       titleLogo: jellyfinService.getLogoUrl(itemId: movie.jellyfinId),
-      studio: studioLogo
     )
     let player = ClientPlayer(hlsUrl: hls, directPlayUrl: direct)
-    // Compute progress metrics from Jellyfin ticks
     let ticks = movie.jellyfinMetadata?.userData?.playbackPositionTicks ?? 0
-    let progressMs: Int? = ticks > 0 ? Int(ticks / 10_000) : nil // 1 tick = 100ns
+    let progressMs: Int? = ticks > 0 ? Int(ticks / 10_000) : nil
     let totalMs: Int? = (movie.jellyfinMetadata?.runTimeTicks).map { Int($0 / 10_000) }
     let progressPercent: Float? = {
       guard let p = progressMs, let t = totalMs, t > 0 else { return nil }

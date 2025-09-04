@@ -126,26 +126,17 @@ final class JellyfinService: Sendable {
     }
     
     func getPosterUrl(itemId: String) -> String {
-        getImageUrl(itemId: itemId, imageType: "Primary", quality: 100)
+        getImageUrl(itemId: itemId, imageType: "Primary", quality: 85)
     }
     
     func getBackdropUrl(itemId: String) -> String {
-        getImageUrl(itemId: itemId, imageType: "Backdrop", quality: 100)
+        getImageUrl(itemId: itemId, imageType: "Backdrop", quality: 85)
     }
 
     func getLogoUrl(itemId: String) -> String {
-        getImageUrl(itemId: itemId, imageType: "Logo", maxWidth: 800)
+        getImageUrl(itemId: itemId, imageType: "Logo", quality: 85)
     }
 
-    func getStudioLogoUrl(studioId: String, maxWidth: Int? = nil, quality: Int? = 100) -> String {
-        // Most Jellyfin servers expose studio brand under Primary
-        var url = "\(baseURL)/Studios/\(studioId)/Images/Primary"
-        var query: [String] = []
-        if let maxWidth { query.append("maxWidth=\(maxWidth)") }
-        if let quality { query.append("quality=\(quality)") }
-        if !query.isEmpty { url += "?" + query.joined(separator: "&") }
-        return url
-    }
     
     // MARK: - Playback
     
