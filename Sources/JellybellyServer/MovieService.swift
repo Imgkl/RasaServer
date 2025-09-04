@@ -515,7 +515,10 @@ final class MovieService {
       .sort(\.$title)
       .all()
     let total = movies.count
-    let items = movies.map { m in buildClientMovie(from: m) }
+    let ids = movies.map { $0.jellyfinId }
+    let live = try await jellyfinService.fetchItems(ids: ids)
+    let liveById = Dictionary(uniqueKeysWithValues: live.map { ($0.id, $0) })
+    let items = movies.map { m in buildClientMovie(from: m, liveMeta: liveById[m.jellyfinId]) }
     return ClientMoviesListResponse(movies: items, totalCount: total)
   }
 
@@ -533,7 +536,10 @@ final class MovieService {
       .with(\.$tags)
       .sort(\.$title)
       .all()
-    let items = movies.map { m in buildClientMovie(from: m) }
+    let ids = movies.map { $0.jellyfinId }
+    let live = try await jellyfinService.fetchItems(ids: ids)
+    let liveById = Dictionary(uniqueKeysWithValues: live.map { ($0.id, $0) })
+    let items = movies.map { m in buildClientMovie(from: m, liveMeta: liveById[m.jellyfinId]) }
     return ClientMoviesListResponse(movies: items, totalCount: items.count)
   }
 
@@ -542,6 +548,10 @@ final class MovieService {
     let movies = try await Movie.query(on: fluent.db())
       .with(\.$tags)
       .all()
+    // Live overlay for all movies in the response
+    let ids = movies.map { $0.jellyfinId }
+    let live = try await jellyfinService.fetchItems(ids: ids)
+    let liveById = Dictionary(uniqueKeysWithValues: live.map { ($0.id, $0) })
     // Group by year (unknown grouped under nil)
     var groups: [Int?: [Movie]] = [:]
     for m in movies {
@@ -560,7 +570,7 @@ final class MovieService {
     var timeline: [ClientTimelineItem] = []
     for key in orderedYears {
       let bucket = (groups[key] ?? []).sorted { $0.title < $1.title }
-      let moviesOut = bucket.map { buildClientMovie(from: $0) }
+      let moviesOut = bucket.map { buildClientMovie(from: $0, liveMeta: liveById[$0.jellyfinId]) }
       let yearOut: ClientTimelineYear = key == nil ? .unknown : .known(key!)
       timeline.append(ClientTimelineItem(year: yearOut, movies: moviesOut))
     }
@@ -568,7 +578,7 @@ final class MovieService {
     return timeline
   }
 
-  private func buildClientMovie(from movie: Movie) -> ClientMovieResponse {
+  private func buildClientMovie(from movie: Movie, liveMeta: JellyfinMovieMetadata? = nil) -> ClientMovieResponse {
     let imdbId =
       movie.jellyfinMetadata?.providerIds?["Imdb"] ?? movie.jellyfinMetadata?.providerIds?["IMDb"]
     let direct = jellyfinService.getStreamUrl(itemId: movie.jellyfinId)
@@ -579,9 +589,10 @@ final class MovieService {
       titleLogo: jellyfinService.getLogoUrl(itemId: movie.jellyfinId),
     )
     let player = ClientPlayer(hlsUrl: hls, directPlayUrl: direct)
-    let ticks = movie.jellyfinMetadata?.userData?.playbackPositionTicks ?? 0
+    let effectiveMeta = liveMeta ?? movie.jellyfinMetadata
+    let ticks = effectiveMeta?.userData?.playbackPositionTicks ?? 0
     let progressMs: Int? = ticks > 0 ? Int(ticks / 10_000) : nil
-    let totalMs: Int? = (movie.jellyfinMetadata?.runTimeTicks).map { Int($0 / 10_000) }
+    let totalMs: Int? = (effectiveMeta?.runTimeTicks).map { Int($0 / 10_000) }
     let progressPercent: Float? = {
       guard let p = progressMs, let t = totalMs, t > 0 else { return nil }
       return min(100, max(0, (Float(p) / Float(t)) * 100))
@@ -598,7 +609,7 @@ final class MovieService {
       tags: movie.tags.map(MinimalTagResponse.init),
       imdbId: imdbId,
       player: player,
-      isWatched: movie.jellyfinMetadata?.userData?.played ?? false,
+      isWatched: effectiveMeta?.userData?.played ?? false,
       progressMs: progressMs,
       progressPercent: progressPercent
     )

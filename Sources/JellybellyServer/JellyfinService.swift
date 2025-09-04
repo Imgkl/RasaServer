@@ -204,6 +204,32 @@ final class JellyfinService: Sendable {
         let resp = try await httpClient.execute(req, timeout: .seconds(8))
         guard resp.status == .ok else { throw JellyfinError.httpError(resp.status.code, "Playback stop report failed") }
     }
+
+    // MARK: - Bulk item fetch (UserData + RunTimeTicks)
+    func fetchItems(ids: [String]) async throws -> [JellyfinMovieMetadata] {
+        guard !ids.isEmpty else { return [] }
+        let chunks = ids.chunked(into: 80)
+        var aggregated: [JellyfinMovieMetadata] = []
+        aggregated.reserveCapacity(ids.count)
+
+        for c in chunks {
+            let idsParam = c.joined(separator: ",")
+            let base = "\(baseURL)/Users/\(userId)/Items"
+            var req = HTTPClientRequest(url: "\(base)?Ids=\(idsParam)&Fields=RunTimeTicks,UserData")
+            req.method = .GET
+            req.headers.add(name: "X-MediaBrowser-Token", value: apiKey)
+            req.headers.add(name: "Accept", value: "application/json")
+
+            let resp = try await httpClient.execute(req, timeout: .seconds(15))
+            guard resp.status == .ok else {
+                throw JellyfinError.httpError(resp.status.code, "Failed to fetch items batch")
+            }
+            let data = try await resp.body.collect(upTo: 5 * 1024 * 1024)
+            let decoded = try JSONDecoder().decode(JellyfinItemsResponse.self, from: data)
+            aggregated.append(contentsOf: decoded.items)
+        }
+        return aggregated
+    }
     
     // MARK: - Server Info
     
@@ -237,6 +263,20 @@ final class JellyfinService: Sendable {
         let response = try await httpClient.execute(request, timeout: .seconds(10))
         
         return response.status == .ok
+    }
+}
+
+private extension Array {
+    func chunked(into size: Int) -> [[Element]] {
+        guard size > 0 else { return [self] }
+        var result: [[Element]] = []
+        var idx = startIndex
+        while idx < endIndex {
+            let end = index(idx, offsetBy: size, limitedBy: endIndex) ?? endIndex
+            result.append(Array(self[idx..<end]))
+            idx = end
+        }
+        return result
     }
 }
 
