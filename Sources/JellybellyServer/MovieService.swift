@@ -531,7 +531,7 @@ final class MovieService {
     // Filter for valid backdrop and not watched (based on Jellyfin user data)
     var candidates = movies.filter { m in
       if let url = m.backdropUrl, !url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-        // Prefer not watched; if unknown, include and we'll filter after live overlay
+        // Only include movies that have backdrop URLs (validation happens during sync)
         return true
       }
       return false
@@ -869,7 +869,11 @@ final class MovieService {
             existing.director = jellyfinMovie.director
             existing.cast = jellyfinMovie.cast
             existing.posterUrl = jellyfinService.getPosterUrl(itemId: jellyfinMovie.id)
-            existing.backdropUrl = jellyfinService.getBackdropUrl(itemId: jellyfinMovie.id)
+            
+            // Validate backdrop URL before storing
+            let backdropUrl = jellyfinService.getBackdropUrl(itemId: jellyfinMovie.id)
+            existing.backdropUrl = await validateImageUrl(backdropUrl) ? backdropUrl : nil
+            
             existing.jellyfinMetadata = jellyfinMovie
 
             try await existing.save(on: fluent.db())
@@ -880,7 +884,10 @@ final class MovieService {
             // Create new movie
             let movie = jellyfinMovie.toMovie()
             movie.posterUrl = jellyfinService.getPosterUrl(itemId: jellyfinMovie.id)
-            movie.backdropUrl = jellyfinService.getBackdropUrl(itemId: jellyfinMovie.id)
+            
+            // Validate backdrop URL before storing
+            let backdropUrl = jellyfinService.getBackdropUrl(itemId: jellyfinMovie.id)
+            movie.backdropUrl = await validateImageUrl(backdropUrl) ? backdropUrl : nil
 
             try await movie.save(on: fluent.db())
             stats.moviesUpdated += 1
@@ -975,6 +982,20 @@ final class MovieService {
   }
 
   // MARK: - Private Helpers
+
+  private func validateImageUrl(_ url: String) async -> Bool {
+    guard !url.isEmpty else { return false }
+    
+    do {
+      var request = HTTPClientRequest(url: url)
+      request.method = .HEAD
+      let response = try await jellyfinService.client.execute(request, timeout: .seconds(5))
+      return response.status == .ok
+    } catch {
+      logger.debug("Image validation failed for \(url): \(error)")
+      return false
+    }
+  }
 
   private func getMovieEntity(id: String) async throws -> Movie {
     if let uuid = UUID(uuidString: id) {
