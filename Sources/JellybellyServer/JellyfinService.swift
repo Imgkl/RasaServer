@@ -86,6 +86,50 @@ final class JellyfinService: Sendable {
         logger.info("Fetched \(jellyfinResponse.items.count) movies from Jellyfin")
         return jellyfinResponse.items
     }
+
+    // Fetch resume/continue-watching items for the user (movies only)
+    func fetchResumeItems(limit: Int? = nil) async throws -> [JellyfinMovieMetadata] {
+        let base = "\(baseURL)/Users/\(userId)/Items/Resume"
+        var url = base + "?IncludeItemTypes=Movie&Fields=Overview,Genres,People,MediaStreams,ProviderIds,Studios,RunTimeTicks,UserData,ProductionYear"
+        if let limit = limit, limit > 0 { url += "&Limit=\(limit)" }
+
+        var request = HTTPClientRequest(url: url)
+        request.method = .GET
+        request.headers.add(name: "X-MediaBrowser-Token", value: apiKey)
+        request.headers.add(name: "Accept", value: "application/json")
+
+        let response = try await httpClient.execute(request, timeout: .seconds(12))
+        guard response.status == .ok else {
+            throw JellyfinError.httpError(response.status.code, "Failed to fetch resume items")
+        }
+        let data = try await response.body.collect(upTo: 5 * 1024 * 1024)
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .useDefaultKeys
+        let decoded = try decoder.decode(JellyfinItemsResponse.self, from: data)
+        return decoded.items
+    }
+
+    /// Fetch recently added movies for the user, sorted by DateCreated desc
+    func fetchRecentlyAddedMovies(limit: Int = 10) async throws -> [JellyfinMovieMetadata] {
+        let base = "\(baseURL)/Users/\(userId)/Items"
+        let fields = "Overview,Genres,People,MediaStreams,ProviderIds,Studios,RunTimeTicks,UserData,ProductionYear,ImageBlurHashes"
+        let url = "\(base)?IncludeItemTypes=Movie&Recursive=true&SortBy=DateCreated&SortOrder=Descending&Limit=\(limit)&Fields=\(fields)"
+
+        var request = HTTPClientRequest(url: url)
+        request.method = .GET
+        request.headers.add(name: "X-MediaBrowser-Token", value: apiKey)
+        request.headers.add(name: "Accept", value: "application/json")
+
+        let response = try await httpClient.execute(request, timeout: .seconds(12))
+        guard response.status == .ok else {
+            throw JellyfinError.httpError(response.status.code, "Failed to fetch recently added movies")
+        }
+        let data = try await response.body.collect(upTo: 5 * 1024 * 1024)
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .useDefaultKeys
+        let decoded = try decoder.decode(JellyfinItemsResponse.self, from: data)
+        return decoded.items
+    }
     
     func fetchMovie(id: String) async throws -> JellyfinMovieMetadata {
         let url = "\(baseURL)/Users/\(userId)/Items/\(id)"

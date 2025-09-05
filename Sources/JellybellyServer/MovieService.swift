@@ -522,6 +522,110 @@ final class MovieService {
     return ClientMoviesListResponse(movies: items, totalCount: total)
   }
 
+  // MARK: - Clients Home helpers
+  /// 5 random movies with a valid backdrop (non-empty) and not watched
+  func getBannerMovies(maxCount: Int = 5) async throws -> [ClientMovieResponse] {
+    // Fetch all movies with tags to build client payload, then filter those with backdrops
+    let movies = try await Movie.query(on: fluent.db()).with(\.$tags).all()
+    guard !movies.isEmpty else { return [] }
+    // Filter for valid backdrop and not watched (based on Jellyfin user data)
+    var candidates = movies.filter { m in
+      if let url = m.backdropUrl, !url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        // Prefer not watched; if unknown, include and we'll filter after live overlay
+        return true
+      }
+      return false
+    }
+    if candidates.isEmpty { return [] }
+    // Randomly sample a larger pool to maximize chance of unwatched; fallback if none
+    let shuffled = candidates.shuffled()
+    let sampleLimit = min(candidates.count, max( maxCount * 5, 100))
+    let prelim = Array(shuffled.prefix(sampleLimit))
+    // Overlay live runtime/progress where available for the sample
+    let ids = prelim.map { $0.jellyfinId }
+    let live = try await jellyfinService.fetchItems(ids: ids)
+    let liveById = Dictionary(uniqueKeysWithValues: live.map { ($0.id, $0) })
+    // Exclude watched based on live user data
+    let notWatched = prelim.filter { m in
+      let played = liveById[m.jellyfinId]?.userData?.played ?? false
+      return !played
+    }
+    candidates = notWatched.isEmpty ? prelim : notWatched
+    let picked = Array(candidates.prefix(maxCount))
+    return picked.map { buildClientMovie(from: $0, liveMeta: liveById[$0.jellyfinId]) }
+  }
+
+  /// Movies with progress for continue watching (movies only), sorted by last played desc
+  func getContinueWatchingMovies() async throws -> [ClientMovieResponse] {
+    // Pull resume items from Jellyfin and map to local movies
+    let resume = try await jellyfinService.fetchResumeItems()
+    if resume.isEmpty { return [] }
+    let ids = resume.map { $0.id }
+    // Load matching local entities
+    let local = try await Movie.query(on: fluent.db())
+      .filter(\.$jellyfinId ~~ ids)
+      .with(\.$tags)
+      .all()
+    let byId = Dictionary(uniqueKeysWithValues: local.map { ($0.jellyfinId, $0) })
+    // Keep original resume order
+    var out: [ClientMovieResponse] = []
+    out.reserveCapacity(resume.count)
+    for meta in resume {
+      if let m = byId[meta.id] {
+        out.append(buildClientMovie(from: m, liveMeta: meta))
+      }
+    }
+    return out
+  }
+
+  /// 10 newest movies by Jellyfin DateCreated desc (server truth)
+  func getRecentlyAddedMovies(maxCount: Int = 10) async throws -> [ClientMovieResponse] {
+    let recent = try await jellyfinService.fetchRecentlyAddedMovies(limit: maxCount)
+    if recent.isEmpty { return [] }
+    // Map to local models preserving order
+    let ids = recent.map { $0.id }
+    let local = try await Movie.query(on: fluent.db())
+      .filter(\.$jellyfinId ~~ ids)
+      .with(\.$tags)
+      .all()
+    let byId = Dictionary(uniqueKeysWithValues: local.map { ($0.jellyfinId, $0) })
+    var out: [ClientMovieResponse] = []
+    out.reserveCapacity(recent.count)
+    for meta in recent {
+      if let m = byId[meta.id] {
+        out.append(buildClientMovie(from: m, liveMeta: meta))
+      }
+    }
+    return out
+  }
+
+  /// Random mood pick (excluding provided slugs) with up to maxCount movies
+  func getRandomMoodSection(excluding excluded: [String], maxCount: Int = 10) async throws -> (mood: String, moodTitle: String, items: [ClientMovieResponse])? {
+    // Build candidate moods
+    let allMoods = Array(config.moodBuckets.keys)
+    let excludeSet = Set(excluded.compactMap { $0.isEmpty ? nil : $0 })
+    var pool = allMoods.filter { !excludeSet.contains($0) }
+    if pool.isEmpty { pool = allMoods }
+    guard let mood = pool.randomElement() else { return nil }
+    let moodTitle = config.moodBuckets[mood]?.title ?? mood
+    // Fetch movies tagged with this mood
+    guard let tag = try await Tag.query(on: fluent.db()).filter(\.$slug == mood).first() else {
+      return nil
+    }
+    let movies = try await Movie.query(on: fluent.db())
+      .join(MovieTag.self, on: \Movie.$id == \MovieTag.$movie.$id)
+      .filter(MovieTag.self, \.$tag.$id == tag.requireID())
+      .with(\.$tags)
+      .limit(maxCount)
+      .all()
+    if movies.isEmpty { return (mood, moodTitle, []) }
+    let ids = movies.map { $0.jellyfinId }
+    let live = try await jellyfinService.fetchItems(ids: ids)
+    let liveById = Dictionary(uniqueKeysWithValues: live.map { ($0.id, $0) })
+    let items = movies.map { buildClientMovie(from: $0, liveMeta: liveById[$0.jellyfinId]) }
+    return (mood, moodTitle, items)
+  }
+
   func getClientMovies(withTag tagSlug: String) async throws -> ClientMoviesListResponse {
     guard config.moodBuckets[tagSlug] != nil else {
       throw MovieServiceError.tagNotFound(tagSlug)

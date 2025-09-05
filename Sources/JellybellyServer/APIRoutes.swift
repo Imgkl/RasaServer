@@ -298,6 +298,44 @@ final class APIRoutes: @unchecked Sendable {
             return try jsonResponse(try await self.movieService.getClientTimeline())
         }
 
+        // GET /api/v1/clients/home - aggregated landing payload
+        clients.get("home") { request, context in
+            // Parse optional header for mood exclusions
+            let headerName = HTTPField.Name("X-Mood-Exclude")
+            let excludeHeader = request.headers.first { $0.name == headerName }?.value
+            let excludedMoods: [String] = excludeHeader.map { value in
+                value.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            } ?? []
+
+            async let banner = self.movieService.getBannerMovies(maxCount: 5)
+            async let cont = self.movieService.getContinueWatchingMovies()
+            async let recent = self.movieService.getRecentlyAddedMovies(maxCount: 10)
+            async let random = self.movieService.getRandomMoodSection(excluding: excludedMoods, maxCount: 10)
+
+            let (bannerItems, contItems, recentItems, randomSection) = try await (banner, cont, recent, random)
+
+            struct RandomBlock: Codable { let mood: String; let moodTitle: String; let items: [ClientMovieResponse] }
+            struct HomePayload: Codable {
+                let banner: [ClientMovieResponse]?
+                let continueWatching: [ClientMovieResponse]?
+                let recentlyAdded: [ClientMovieResponse]?
+                let random: RandomBlock?
+            }
+
+            let payload = HomePayload(
+                banner: bannerItems.isEmpty ? nil : bannerItems,
+                continueWatching: contItems.isEmpty ? nil : contItems,
+                recentlyAdded: recentItems.isEmpty ? nil : recentItems,
+                random: {
+                    if let r = randomSection {
+                        return RandomBlock(mood: r.mood, moodTitle: r.moodTitle, items: r.items)
+                    } else { return nil }
+                }()
+            )
+
+            return try jsonResponse(payload)
+        }
+
         // Playback reporting proxies
         struct StartPayload: Codable { let jellyfinId: String; let positionMs: Int?; let playMethod: String?; let audioStreamIndex: Int?; let subtitleStreamIndex: Int? }
         clients.post("playback/start") { request, context in
