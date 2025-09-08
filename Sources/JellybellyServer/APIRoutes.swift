@@ -310,7 +310,7 @@ final class APIRoutes: @unchecked Sendable {
             async let banner = self.movieService.getBannerMovies(maxCount: 5)
             async let cont = self.movieService.getContinueWatchingMovies()
             async let recent = self.movieService.getRecentlyAddedMovies(maxCount: 10)
-            async let random = self.movieService.getRandomMoodSection(excluding: excludedMoods, maxCount: 10)
+            async let random = self.movieService.getRandomMoodSection(excluding: excludedMoods)
 
             let (bannerItems, contItems, recentItems, randomSection) = try await (banner, cont, recent, random)
 

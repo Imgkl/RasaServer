@@ -16,6 +16,10 @@ final class MovieService {
   private var lastSyncAt: Date?
   private var lastSyncDuration: TimeInterval?
   private var lastSyncStats = SyncStats()
+  
+  // Banner movies tracking to reduce repetition
+  private var recentBannerMovies: [String] = []
+  private let maxRecentBannerCount = 20
 
   init(
     config: JellybellyConfiguration,
@@ -528,30 +532,53 @@ final class MovieService {
     // Fetch all movies with tags to build client payload, then filter those with backdrops
     let movies = try await Movie.query(on: fluent.db()).with(\.$tags).all()
     guard !movies.isEmpty else { return [] }
-    // Filter for valid backdrop and not watched (based on Jellyfin user data)
-    var candidates = movies.filter { m in
+    
+    // Filter for movies with valid backdrop URLs
+    let moviesWithBackdrops = movies.filter { m in
       if let url = m.backdropUrl, !url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-        // Only include movies that have backdrop URLs (validation happens during sync)
         return true
       }
       return false
     }
-    if candidates.isEmpty { return [] }
-    // Randomly sample a larger pool to maximize chance of unwatched; fallback if none
-    let shuffled = candidates.shuffled()
-    let sampleLimit = min(candidates.count, max( maxCount * 5, 100))
-    let prelim = Array(shuffled.prefix(sampleLimit))
-    // Overlay live runtime/progress where available for the sample
-    let ids = prelim.map { $0.jellyfinId }
+    if moviesWithBackdrops.isEmpty { return [] }
+    
+    // Get live data for ALL movies with backdrops to check watch status
+    let ids = moviesWithBackdrops.map { $0.jellyfinId }
     let live = try await jellyfinService.fetchItems(ids: ids)
     let liveById = Dictionary(uniqueKeysWithValues: live.map { ($0.id, $0) })
-    // Exclude watched based on live user data
-    let notWatched = prelim.filter { m in
+    
+    // Filter for unwatched movies
+    let unwatchedMovies = moviesWithBackdrops.filter { m in
       let played = liveById[m.jellyfinId]?.userData?.played ?? false
       return !played
     }
-    candidates = notWatched.isEmpty ? prelim : notWatched
-    let picked = Array(candidates.prefix(maxCount))
+    
+    // If no unwatched movies, fall back to all movies with backdrops
+    let candidates = unwatchedMovies.isEmpty ? moviesWithBackdrops : unwatchedMovies
+    
+    // Remove recently shown movies to reduce repetition
+    let recentSet = Set(recentBannerMovies)
+    var availableCandidates = candidates.filter { !recentSet.contains($0.jellyfinId) }
+    
+    // If we don't have enough candidates after filtering, reset the recent list
+    if availableCandidates.count < maxCount {
+      recentBannerMovies.removeAll()
+      availableCandidates = candidates
+    }
+    
+    // Truly random selection from available candidates
+    let shuffled = availableCandidates.shuffled()
+    let picked = Array(shuffled.prefix(maxCount))
+    
+    // Track the selected movies to avoid repetition
+    let selectedIds = picked.map { $0.jellyfinId }
+    recentBannerMovies.append(contentsOf: selectedIds)
+    
+    // Keep only the most recent movies in the tracking list
+    if recentBannerMovies.count > maxRecentBannerCount {
+      recentBannerMovies = Array(recentBannerMovies.suffix(maxRecentBannerCount))
+    }
+    
     return picked.map { buildClientMovie(from: $0, liveMeta: liveById[$0.jellyfinId]) }
   }
 
@@ -599,8 +626,8 @@ final class MovieService {
     return out
   }
 
-  /// Random mood pick (excluding provided slugs) with up to maxCount movies
-  func getRandomMoodSection(excluding excluded: [String], maxCount: Int = 10) async throws -> (mood: String, moodTitle: String, items: [ClientMovieResponse])? {
+  /// Random mood pick (excluding provided slugs) with all movies for that mood
+  func getRandomMoodSection(excluding excluded: [String]) async throws -> (mood: String, moodTitle: String, items: [ClientMovieResponse])? {
     // Build candidate moods
     let allMoods = Array(config.moodBuckets.keys)
     let excludeSet = Set(excluded.compactMap { $0.isEmpty ? nil : $0 })
@@ -616,7 +643,6 @@ final class MovieService {
       .join(MovieTag.self, on: \Movie.$id == \MovieTag.$movie.$id)
       .filter(MovieTag.self, \.$tag.$id == tag.requireID())
       .with(\.$tags)
-      .limit(maxCount)
       .all()
     if movies.isEmpty { return (mood, moodTitle, []) }
     let ids = movies.map { $0.jellyfinId }
