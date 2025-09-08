@@ -626,35 +626,6 @@ final class MovieService {
     return out
   }
 
-  /// Get unwatched movies (excluding currently being watched)
-  func getUnwatchedMovies() async throws -> [ClientMovieResponse] {
-    // Get all movies with tags
-    let movies = try await Movie.query(on: fluent.db()).with(\.$tags).all()
-    guard !movies.isEmpty else { return [] }
-    
-    // Get live data for all movies to check watch status and progress
-    let ids = movies.map { $0.jellyfinId }
-    let live = try await jellyfinService.fetchItems(ids: ids)
-    let liveById = Dictionary(uniqueKeysWithValues: live.map { ($0.id, $0) })
-    
-    // Filter for unwatched movies (not played and no significant progress)
-    let unwatchedMovies = movies.filter { m in
-      let userData = liveById[m.jellyfinId]?.userData
-      let played = userData?.played ?? false
-      let progressTicks = userData?.playbackPositionTicks ?? 0
-      let runtimeTicks = liveById[m.jellyfinId]?.runTimeTicks ?? 0
-      
-      // Consider unwatched if not played AND no significant progress (less than 5% watched)
-      let hasSignificantProgress = runtimeTicks > 0 && progressTicks > 0 && 
-        (Double(progressTicks) / Double(runtimeTicks)) > 0.05
-      
-      return !played && !hasSignificantProgress
-    }
-    
-    // Build client responses
-    return unwatchedMovies.map { buildClientMovie(from: $0, liveMeta: liveById[$0.jellyfinId]) }
-  }
-
   /// Get total progress statistics
   func getTotalProgress() async throws -> (totalMovies: Int, watchedMovies: Int, progressPercent: Float) {
     // Get all movies
