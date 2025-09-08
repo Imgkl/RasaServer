@@ -527,58 +527,37 @@ final class MovieService {
   }
 
   // MARK: - Clients Home helpers
-  /// 5 random movies with a valid backdrop (non-empty) and not watched
-  func getBannerMovies(maxCount: Int = 5) async throws -> [ClientMovieResponse] {
-    // Fetch all movies with tags to build client payload, then filter those with backdrops
+  /// 5 unwatched movies selected deterministically using a salt (falls back to all if none unwatched)
+  func getBannerMovies(maxCount: Int = 5, salt: String? = nil) async throws -> [ClientMovieResponse] {
     let movies = try await Movie.query(on: fluent.db()).with(\.$tags).all()
     guard !movies.isEmpty else { return [] }
     
-    // Filter for movies with valid backdrop URLs
-    let moviesWithBackdrops = movies.filter { m in
-      if let url = m.backdropUrl, !url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-        return true
-      }
-      return false
-    }
-    if moviesWithBackdrops.isEmpty { return [] }
-    
+
     // Get live data for ALL movies with backdrops to check watch status
-    let ids = moviesWithBackdrops.map { $0.jellyfinId }
+    let ids = movies.map { $0.jellyfinId }
     let live = try await jellyfinService.fetchItems(ids: ids)
     let liveById = Dictionary(uniqueKeysWithValues: live.map { ($0.id, $0) })
-    
-    // Filter for unwatched movies
-    let unwatchedMovies = moviesWithBackdrops.filter { m in
-      let played = liveById[m.jellyfinId]?.userData?.played ?? false
-      return !played
+    // Prefer unwatched; fallback to all movies
+    let unwatched = movies.filter { m in !(liveById[m.jellyfinId]?.userData?.played ?? false) }
+    let pool = unwatched.isEmpty ? movies : unwatched
+
+    // Deterministic ordering based on salt
+    let saltValue = salt ?? Date().iso8601String
+    func hash64(_ s: String) -> UInt64 {
+      // FNV-1a 64-bit
+      let fnvOffset: UInt64 = 14695981039346656037
+      let fnvPrime: UInt64 = 1099511628211
+      var hash = fnvOffset
+      for byte in s.utf8 { hash ^= UInt64(byte); hash = hash &* fnvPrime }
+      return hash
     }
-    
-    // If no unwatched movies, fall back to all movies with backdrops
-    let candidates = unwatchedMovies.isEmpty ? moviesWithBackdrops : unwatchedMovies
-    
-    // Remove recently shown movies to reduce repetition
-    let recentSet = Set(recentBannerMovies)
-    var availableCandidates = candidates.filter { !recentSet.contains($0.jellyfinId) }
-    
-    // If we don't have enough candidates after filtering, reset the recent list
-    if availableCandidates.count < maxCount {
-      recentBannerMovies.removeAll()
-      availableCandidates = candidates
+    let ordered = pool.sorted { a, b in
+      let ha = hash64(saltValue + a.jellyfinId)
+      let hb = hash64(saltValue + b.jellyfinId)
+      if ha == hb { return a.jellyfinId < b.jellyfinId }
+      return ha < hb
     }
-    
-    // Truly random selection from available candidates
-    let shuffled = availableCandidates.shuffled()
-    let picked = Array(shuffled.prefix(maxCount))
-    
-    // Track the selected movies to avoid repetition
-    let selectedIds = picked.map { $0.jellyfinId }
-    recentBannerMovies.append(contentsOf: selectedIds)
-    
-    // Keep only the most recent movies in the tracking list
-    if recentBannerMovies.count > maxRecentBannerCount {
-      recentBannerMovies = Array(recentBannerMovies.suffix(maxRecentBannerCount))
-    }
-    
+    let picked = Array(ordered.prefix(maxCount))
     return picked.map { buildClientMovie(from: $0, liveMeta: liveById[$0.jellyfinId]) }
   }
 
