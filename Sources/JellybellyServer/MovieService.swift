@@ -626,6 +626,61 @@ final class MovieService {
     return out
   }
 
+  /// Get unwatched movies (excluding currently being watched)
+  func getUnwatchedMovies() async throws -> [ClientMovieResponse] {
+    // Get all movies with tags
+    let movies = try await Movie.query(on: fluent.db()).with(\.$tags).all()
+    guard !movies.isEmpty else { return [] }
+    
+    // Get live data for all movies to check watch status and progress
+    let ids = movies.map { $0.jellyfinId }
+    let live = try await jellyfinService.fetchItems(ids: ids)
+    let liveById = Dictionary(uniqueKeysWithValues: live.map { ($0.id, $0) })
+    
+    // Filter for unwatched movies (not played and no significant progress)
+    let unwatchedMovies = movies.filter { m in
+      let userData = liveById[m.jellyfinId]?.userData
+      let played = userData?.played ?? false
+      let progressTicks = userData?.playbackPositionTicks ?? 0
+      let runtimeTicks = liveById[m.jellyfinId]?.runTimeTicks ?? 0
+      
+      // Consider unwatched if not played AND no significant progress (less than 5% watched)
+      let hasSignificantProgress = runtimeTicks > 0 && progressTicks > 0 && 
+        (Double(progressTicks) / Double(runtimeTicks)) > 0.05
+      
+      return !played && !hasSignificantProgress
+    }
+    
+    // Build client responses
+    return unwatchedMovies.map { buildClientMovie(from: $0, liveMeta: liveById[$0.jellyfinId]) }
+  }
+
+  /// Get total progress statistics
+  func getTotalProgress() async throws -> (totalMovies: Int, watchedMovies: Int, progressPercent: Float) {
+    // Get all movies
+    let movies = try await Movie.query(on: fluent.db()).all()
+    let totalMovies = movies.count
+    
+    if totalMovies == 0 {
+      return (totalMovies: 0, watchedMovies: 0, progressPercent: 0.0)
+    }
+    
+    // Get live data for all movies to check watch status
+    let ids = movies.map { $0.jellyfinId }
+    let live = try await jellyfinService.fetchItems(ids: ids)
+    let liveById = Dictionary(uniqueKeysWithValues: live.map { ($0.id, $0) })
+    
+    // Count watched movies
+    let watchedMovies = movies.filter { m in
+      let played = liveById[m.jellyfinId]?.userData?.played ?? false
+      return played
+    }.count
+    
+    let progressPercent = Float(watchedMovies) / Float(totalMovies) * 100.0
+    
+    return (totalMovies: totalMovies, watchedMovies: watchedMovies, progressPercent: progressPercent)
+  }
+
   /// Random mood pick (excluding provided slugs) with all movies for that mood
   func getRandomMoodSection(excluding excluded: [String]) async throws -> (mood: String, moodTitle: String, items: [ClientMovieResponse])? {
     // Build candidate moods

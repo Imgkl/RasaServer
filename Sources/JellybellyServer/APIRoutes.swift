@@ -310,27 +310,38 @@ final class APIRoutes: @unchecked Sendable {
             async let banner = self.movieService.getBannerMovies(maxCount: 5)
             async let cont = self.movieService.getContinueWatchingMovies()
             async let recent = self.movieService.getRecentlyAddedMovies(maxCount: 10)
+            async let unwatched = self.movieService.getUnwatchedMovies()
             async let random = self.movieService.getRandomMoodSection(excluding: excludedMoods)
+            async let progress = self.movieService.getTotalProgress()
 
-            let (bannerItems, contItems, recentItems, randomSection) = try await (banner, cont, recent, random)
+            let (bannerItems, contItems, recentItems, unwatchedItems, randomSection, progressStats) = try await (banner, cont, recent, unwatched, random, progress)
 
             struct RandomBlock: Codable { let mood: String; let moodTitle: String; let items: [ClientMovieResponse] }
+            struct ProgressStats: Codable { let totalMovies: Int; let watchedMovies: Int; let progressPercent: Float }
             struct HomePayload: Codable {
                 let banner: [ClientMovieResponse]?
                 let continueWatching: [ClientMovieResponse]?
                 let recentlyAdded: [ClientMovieResponse]?
+                let unwatched: [ClientMovieResponse]?
                 let random: RandomBlock?
+                let progress: ProgressStats
             }
 
             let payload = HomePayload(
                 banner: bannerItems.isEmpty ? nil : bannerItems,
                 continueWatching: contItems.isEmpty ? nil : contItems,
                 recentlyAdded: recentItems.isEmpty ? nil : recentItems,
+                unwatched: unwatchedItems.isEmpty ? nil : unwatchedItems,
                 random: {
                     if let r = randomSection {
                         return RandomBlock(mood: r.mood, moodTitle: r.moodTitle, items: r.items)
                     } else { return nil }
-                }()
+                }(),
+                progress: ProgressStats(
+                    totalMovies: progressStats.totalMovies,
+                    watchedMovies: progressStats.watchedMovies,
+                    progressPercent: progressStats.progressPercent
+                )
             )
 
             return try jsonResponse(payload)
