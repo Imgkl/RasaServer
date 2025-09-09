@@ -378,6 +378,21 @@ final class APIRoutes: @unchecked Sendable {
             )
             return try jsonResponse(SuccessResponse(success: true))
         }
+
+        // Watched state
+        struct WatchedPayload: Codable { let jellyfinId: String; let positionMs: Int? }
+        clients.post("watched") { request, context in
+            let payload = try await request.decode(as: WatchedPayload.self, context: context)
+            // If position is provided (possibly in-progress), stop first to finalize session
+            if let pos = payload.positionMs { try await self.movieService.jellyfinService.reportPlaybackStopped(itemId: payload.jellyfinId, positionMs: pos) }
+            try await self.movieService.jellyfinService.markItemPlayed(itemId: payload.jellyfinId)
+            return try jsonResponse(SuccessResponse(success: true))
+        }
+        clients.post("unwatched") { request, context in
+            let payload = try await request.decode(as: WatchedPayload.self, context: context)
+            try await self.movieService.jellyfinService.markItemUnplayed(itemId: payload.jellyfinId)
+            return try jsonResponse(SuccessResponse(success: true))
+        }
     }
     // MARK: - Settings Routes (BYOK)
     private func addSettingsRoutes(to router: RouterGroup<BasicRequestContext>) {

@@ -373,6 +373,7 @@ struct ClientMovieResponse: Codable, Sendable {
     let title: String
     let year: Int?
     let runtime: String?
+    let runtimeMinutes: Int?
     let description: String?
     let images: ClientImages
     let tags: [MinimalTagResponse]

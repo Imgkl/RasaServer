@@ -249,6 +249,31 @@ final class JellyfinService: Sendable {
         guard resp.status == .ok else { throw JellyfinError.httpError(resp.status.code, "Playback stop report failed") }
     }
 
+    // MARK: - Watched State
+    func markItemPlayed(itemId: String) async throws {
+        let url = "\(baseURL)/Users/\(userId)/PlayedItems/\(itemId)"
+        var req = HTTPClientRequest(url: url)
+        req.method = .POST
+        req.headers.add(name: "X-MediaBrowser-Token", value: apiKey)
+        req.headers.add(name: "Accept", value: "application/json")
+        let resp = try await httpClient.execute(req, timeout: .seconds(8))
+        guard (200..<300).contains(resp.status.code) else {
+            throw JellyfinError.httpError(resp.status.code, "Failed to mark item played")
+        }
+    }
+
+    func markItemUnplayed(itemId: String) async throws {
+        let url = "\(baseURL)/Users/\(userId)/PlayedItems/\(itemId)"
+        var req = HTTPClientRequest(url: url)
+        req.method = .DELETE
+        req.headers.add(name: "X-MediaBrowser-Token", value: apiKey)
+        req.headers.add(name: "Accept", value: "application/json")
+        let resp = try await httpClient.execute(req, timeout: .seconds(8))
+        guard (200..<300).contains(resp.status.code) else {
+            throw JellyfinError.httpError(resp.status.code, "Failed to mark item unplayed")
+        }
+    }
+
     // MARK: - Bulk item fetch (UserData + RunTimeTicks)
     func fetchItems(ids: [String]) async throws -> [JellyfinMovieMetadata] {
         guard !ids.isEmpty else { return [] }

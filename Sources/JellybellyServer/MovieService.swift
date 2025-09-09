@@ -654,7 +654,8 @@ final class MovieService {
     let live = try await jellyfinService.fetchItems(ids: ids)
     let liveById = Dictionary(uniqueKeysWithValues: live.map { ($0.id, $0) })
     let items = movies.map { buildClientMovie(from: $0, liveMeta: liveById[$0.jellyfinId]) }
-    return (mood, moodTitle, items)
+    // max items at 10
+    return (mood, moodTitle, Array(items.prefix(10)))
   }
 
   func getClientMovies(withTag tagSlug: String) async throws -> ClientMoviesListResponse {
@@ -739,6 +740,7 @@ final class MovieService {
       title: movie.title,
       year: movie.year,
       runtime: runtimeString(from: movie.runtimeMinutes),
+      runtimeMinutes: movie.runtimeMinutes,
       description: movie.overview,
       images: images,
       tags: movie.tags.map(MinimalTagResponse.init),
