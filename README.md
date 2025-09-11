@@ -93,7 +93,8 @@ If you’re redirected to `/setup`, finish the wizard first.
 - [x] Auto tagging using AI & Claude BYOK support (Optional)
 - [x] Mood tagging
 - [x] Import and Export of tagged movies 
-- [ ] User Defined Tags   
+- [ ] User Defined Tags
+- [ ] More to be added, based on the requirements 
 
 
 ## Privacy
