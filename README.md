@@ -1,18 +1,20 @@
 # Rasa Server
-
-Pick a movie by mood.
+Trying to answer the age old question "What to watch tonight?"
 
 ## What is this?
-A small server that sits next to Jellyfin and organizes your library by mood. It powers the tvOS app (where you actually browse/watch) and serves a minimal web UI for setup, sync, and tag editing.
+A small companion server that sits next to Jellyfin and organizes your library by mood. It powers the tvOS app (where you actually browse/watch) and serves a minimal web UI for setup, sync, and tag editing.
 
-- tvOS app: the viewing experience (separate app)
-- Web UI: admin only (setup, sync, tags)
+- tvOS, iOS, MacOS app: The viewing experience (separate app which is in WIP)
+- Web UI: For setup, sync, tags
+
+> [!IMPORTANT]
+> This app is pretty much useless if you don't have jellyfin setup
 
 ## How it fits
 - Runs alongside Jellyfin
 - Keeps a local, mood‑tagged catalog
-- tvOS app points at this server
-- Web UI is for admins, not viewers
+- Client app points at this server
+- Web UI is for admins.
 
 ## What you do here (admin)
 - Connect to Jellyfin and run syncs
@@ -20,8 +22,12 @@ A small server that sits next to Jellyfin and organizes your library by mood. It
 - Optionally get auto‑tag suggestions (BYOK)
 - Import/Export your tags map
 
-## Mood buckets (sample)
-- Dialogue‑Driven
+
+## Mood buckets (Currently defined)
+<details>
+<summary> Mood list </summary>
+
+- Dialogue-Driven
 - Vibe Is the Plot
 - Existential Core
 - Crime, Grit & Style
@@ -29,35 +35,66 @@ A small server that sits next to Jellyfin and organizes your library by mood. It
 - Brainmelt Zone
 - The Twist Is the Plot
 - Slow Burn, Sharp Blade
-- One‑Room Pressure Cooker
-- Psychological Pressure‑Cooker
+- One-Room Pressure Cooker
+- Emotional Gut Punch
+- Psychological Pressure-Cooker
 - Time Twists
 - Visual Worship
 - Obsidian Noir
 - Rain & Neon Aesthetic
 - Rainy Day Rewinds
-- Feel‑Good Romance
+- Ha Ha Ha
+- Feel-Good Romance
 - Coming of Age
-- Late‑Night Mind Rattle
+- Late-Night Mind Rattle
 - Uncanny Vibes
 - Horror & Unease
+- WTF Did I Watch
+- Film School Shelf
+- Modern Masterpieces
+- Regional Gems
+- Underseen Treasures
+- Heist Energy
+- Cat and Mouse
+- Antihero Study
+- Ensemble Mosaic
+- Quiet Epics
+- Bittersweet Aftermath
+- Based on Vibes (True Story)
+- Cult Chaos
+- Experimental Cinema
 
-See the full list under Moods in the web UI.
+</details>
 
 ## Quick start
-- Docker
-  1) `docker compose up -d`
-  2) Visit `http://localhost:3242`
-  3) Complete Setup and run a Sync
-  4) In the tvOS app, set this server’s URL
+- Docker (prebuilt image)
+  1) `docker pull ghcr.io/imgkl/rasaserver:latest`
+  2) `docker run -d --name rasa-server -p 3242:3242 \
+         -v "$(pwd)/data:/app/data" \
+         -v "$(pwd)/config:/app/config" \
+         -v "$(pwd)/logs:/app/logs" \
+         -e WEBUI_PORT=3242 \
+         -e RASA_DATABASE_PATH=/app/data/rasa.sqlite \
+         --restart unless-stopped ghcr.io/imgkl/rasaserver:latest`
+  3) Visit `http://localhost:3242`
+  4) Complete Setup and run a Sync
 
 - Local
   1) `./run.sh`
   2) Visit `http://localhost:8001`
   3) Complete Setup and Sync
-  4) In the tvOS app, set this server’s URL
+  4) In the client app, set this server’s URL
 
 If you’re redirected to `/setup`, finish the wizard first.
+
+## Roadmap
+
+- [x] Jellyfin Integeration
+- [x] Auto tagging using AI & Claude BYOK support (Optional)
+- [x] Mood tagging
+- [x] Import and Export of tagged movies 
+- [ ] User Defined Tags   
+
 
 ## Privacy
 - Data stays local in `./data/rasa.sqlite`
