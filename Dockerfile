@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7-labs
 # ==============================================================================
-# JellyBelly Server - Complete Dockerfile for Your Project Structure
+# Rasa Server - Dockerfile
 # Swift Hummingbird Backend + Frontend + ARM64 Cross-Compilation
 # Port: 3242
 # ==============================================================================
@@ -10,7 +10,7 @@ ARG NODE_VERSION=20
 ARG UBUNTU_VERSION=jammy
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
-ARG JELLYBELLY_VERSION=dev
+ARG RASA_VERSION=dev
 
 # ==============================================================================
 # Stage 1: Frontend Build (from frontend/ directory)
@@ -23,14 +23,14 @@ WORKDIR /app
 RUN apk add --no-cache python3 make g++ git
 
 # Copy frontend package files
-COPY frontend/jellybelly-web/package.json frontend/jellybelly-web/package-lock.json* ./
+COPY frontend/rasa-web/package.json frontend/rasa-web/package-lock.json* ./
 
 # Install dependencies (include devDependencies for build tools)
 RUN --mount=type=cache,id=npm-cache,target=/root/.npm \
     npm ci --no-audit --no-fund
 
 # Copy frontend source code
-COPY frontend/jellybelly-web/ ./
+COPY frontend/rasa-web/ ./
 
 # Build the frontend
 ENV NODE_ENV=production
@@ -74,20 +74,20 @@ COPY Sources/ ./Sources/
 ARG TARGETPLATFORM
 RUN --mount=type=cache,id=spm-cache,target=/root/.swiftpm \
     --mount=type=cache,id=spm-ccache,target=/root/.cache \
-    echo "Building JellyBelly Server for target platform: $TARGETPLATFORM" && \
-    swift build --configuration release --product JellybellyServer
+    echo "Building Rasa Server for target platform: $TARGETPLATFORM" && \
+    swift build --configuration release --product RasaServer
 
 # Verify and display binary information
 RUN echo "=== Binary Verification ===" && \
     ls -la .build/release/ && \
-    file .build/release/JellybellyServer || true && \
-    ldd .build/release/JellybellyServer 2>/dev/null || echo "Static binary (no dynamic dependencies)" && \
-    echo "Binary size: $(stat -c%s .build/release/JellybellyServer) bytes" || true && \
+    file .build/release/RasaServer || true && \
+    ldd .build/release/RasaServer 2>/dev/null || echo "Static binary (no dynamic dependencies)" && \
+    echo "Binary size: $(stat -c%s .build/release/RasaServer) bytes" || true && \
     echo "=========================="
 
 # Strip binary to reduce size
-RUN strip .build/release/JellybellyServer || true && \
-    echo "Final binary size: $(stat -c%s .build/release/JellybellyServer) bytes" || true
+RUN strip .build/release/RasaServer || true && \
+    echo "Final binary size: $(stat -c%s .build/release/RasaServer) bytes" || true
 
 # ==============================================================================
 # Stage 3: Production Runtime
@@ -95,7 +95,7 @@ RUN strip .build/release/JellybellyServer || true && \
 FROM swift:${SWIFT_VERSION}-${UBUNTU_VERSION}-slim
 
 # Bring build args into this stage
-ARG JELLYBELLY_VERSION
+ARG RASA_VERSION
 
 # Install runtime dependencies
 RUN export DEBIAN_FRONTEND=noninteractive && \
@@ -117,8 +117,8 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
     && apt-get clean
 
 # Create application user and group
-RUN groupadd -r jellybelly && \
-    useradd -r -g jellybelly -d /app -s /bin/bash -c "JellyBelly Server User" jellybelly
+RUN groupadd -r rasa && \
+    useradd -r -g rasa -d /app -s /bin/bash -c "Rasa Server User" rasa
 
 # Set working directory
 WORKDIR /app
@@ -131,36 +131,33 @@ RUN mkdir -p \
         /app/public \
         /app/static \
         /app/tmp \
-    && chown -R jellybelly:jellybelly /app
+    && chown -R rasa:rasa /app
 
 # Copy Swift binary from builder stage
-COPY --from=swift-builder --chown=jellybelly:jellybelly \
-    /workspace/.build/release/JellybellyServer \
-    /app/jellybelly-server
+COPY --from=swift-builder --chown=rasa:rasa \
+    /workspace/.build/release/RasaServer \
+    /app/rasa-server
 
 # Copy frontend build from frontend builder (Vite outDir -> /public)
-COPY --from=frontend-builder --chown=jellybelly:jellybelly \
+COPY --from=frontend-builder --chown=rasa:rasa \
     /public/ \
     /app/public/
 
 # Copy static assets from top-level public directory
-COPY --chown=jellybelly:jellybelly public/ /app/static/
+COPY --chown=rasa:rasa public/ /app/static/
 
 # Make binary executable
-RUN chmod +x /app/jellybelly-server
-
-# Optionally verify binary with --version without starting services (skip during CI to avoid running server)
-# RUN /app/jellybelly-server --version || true
+RUN chmod +x /app/rasa-server
 
 # Switch to application user for security
-USER jellybelly
+USER rasa
 
-# Environment variables for JellyBelly Server
-ENV JELLYBELLY_HOST=0.0.0.0
-ENV JELLYBELLY_PORT=3242
+# Environment variables for Rasa Server
+ENV RASA_HOST=0.0.0.0
+ENV RASA_PORT=3242
 ENV WEBUI_PORT=3242
-ENV JELLYBELLY_DATABASE_PATH=/app/data/jellybelly.sqlite
-ENV JELLYBELLY_VERSION=${JELLYBELLY_VERSION}
+ENV RASA_DATABASE_PATH=/app/data/rasa.sqlite
+ENV RASA_VERSION=${RASA_VERSION}
 
 # Swift runtime optimizations
 ENV SWIFT_DETERMINISTIC_HASHING=1
@@ -175,14 +172,12 @@ WORKDIR /app
 # Expose port 3242
 EXPOSE 3242
 
-# Add comprehensive labels
-LABEL org.opencontainers.image.title="JellyBelly Server"
-LABEL org.opencontainers.image.description="Swift Hummingbird server with web frontend for Jellyfin mood-based movie discovery"
-LABEL org.opencontainers.image.vendor="JellyBelly Project"
+# OCI labels
+LABEL org.opencontainers.image.title="Rasa Server"
+LABEL org.opencontainers.image.description="Self-hosted mood tagging server for Jellyfin with admin web UI"
+LABEL org.opencontainers.image.vendor="Rasa Project"
 LABEL org.opencontainers.image.port="3242"
-LABEL org.opencontainers.image.source="https://github.com/Imgkl/JellyBellyServer"
-LABEL org.opencontainers.image.documentation="https://github.com/Imgkl/JellyBellyServer/blob/main/README.md"
-LABEL org.opencontainers.image.version="${JELLYBELLY_VERSION}"
+LABEL org.opencontainers.image.version="${RASA_VERSION}"
 
 # Health check configuration
 HEALTHCHECK --interval=30s \
@@ -198,4 +193,4 @@ VOLUME ["/app/data", "/app/config", "/app/logs"]
 ENTRYPOINT ["/usr/bin/tini", "--"]
 
 # Default command to run the server
-CMD ["/app/jellybelly-server"]
+CMD ["/app/rasa-server"]

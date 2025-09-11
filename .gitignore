@@ -8,12 +8,12 @@ DerivedData/
 .netrc
 
 # Frontend artifacts
-frontend/jellybelly-web/node_modules/
-frontend/jellybelly-web/.vite/
-frontend/jellybelly-web/dist/
+frontend/rasa-web/node_modules/
+frontend/rasa-web/.vite/
+frontend/rasa-web/dist/
 
 # Local runtime data
-jellybelly.sqlite
+rasa.sqlite
 config/
 logs/
 data/

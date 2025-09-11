@@ -10,7 +10,7 @@ import FluentSQLiteDriver
 import HummingbirdFluent
 
 @main
-struct JellybellyServer {
+struct RasaServerApp {
     static func main() async throws {
         // Setup logging
         LoggingSystem.bootstrap { label in
@@ -19,8 +19,8 @@ struct JellybellyServer {
             return handler
         }
 
-        let logger = Logger(label: "JellybellyServer")
-        logger.info("🫐 Starting Jellybelly Server v1.0.0")
+        let logger = Logger(label: "RasaServer")
+        logger.info("🎞️ Starting Rasa Server v1.0.0")
         
         // Create shared EventLoopGroup for server and HTTP client
         let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
@@ -28,7 +28,7 @@ struct JellybellyServer {
         let httpClient = HTTPClient(eventLoopGroupProvider: .shared(eventLoopGroup))
         
         // YAML removed: start with defaults, then hydrate from DB
-        let appConfig = JellybellyConfiguration()
+        let appConfig = RasaConfiguration()
         
         // Setup database
         let fluent = try setupDatabase(path: appConfig.databasePath, logger: logger)
@@ -83,7 +83,7 @@ struct JellybellyServer {
         )
 
         logger.info("🚀 Server starting on \(appConfig.host):\(appConfig.port)")
-        logger.info("🌐 Dashboard available at http://\(appConfig.host):\(appConfig.port)")
+        logger.info("🌐 Admin at http://\(appConfig.host):\(appConfig.port)")
         
         do {
             try await app.runService()
@@ -128,7 +128,7 @@ func runMigrations(fluent: Fluent, logger: Logger) async throws {
 // MARK: - Application Setup
 
 func createApplication(
-    config: JellybellyConfiguration,
+    config: RasaConfiguration,
     movieService: MovieService,
     fluent: Fluent,
     logger: Logger,
@@ -161,7 +161,7 @@ func createApplication(
            let htmlString = String(data: htmlData, encoding: .utf8) {
             return textResponse(htmlString, contentType: "text/html; charset=utf-8")
         }
-        return textResponse("<h1>Jellybelly</h1>")
+        return textResponse("<h1>Rasa</h1>")
     }
     // Serve assets under /assets/* by mapping the raw request path to the public folder
     let assets = router.group("assets")
@@ -182,7 +182,7 @@ func createApplication(
         router: router,
         configuration: .init(
             address: .hostname(config.host, port: config.port),
-            serverName: "Jellybelly/1.0.0"
+            serverName: "Rasa/1.0.0"
         ),
         services: [fluent],
         eventLoopGroupProvider: .shared(eventLoopGroup)
@@ -222,7 +222,7 @@ func staticFileResponse(path: String) throws -> Response {
 
 func setupWizardRoutes(
     router: Router<BasicRequestContext>,
-    config: JellybellyConfiguration,
+    config: RasaConfiguration,
     movieService: MovieService,
     httpClient: HTTPClient,
     fluent: Fluent
@@ -291,7 +291,7 @@ func getSetupWizard() -> Response {
     <head>
         <meta charset=\"UTF-8\" />
         <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />
-        <title>🫐 Jellybelly Setup</title>
+        <title>🎞️ Rasa Setup</title>
         <style>
             *{margin:0;padding:0;box-sizing:border-box}
             body{
@@ -331,7 +331,7 @@ func getSetupWizard() -> Response {
     </head>
     <body>
         <div class=\"card\">
-            <div class=\"logo\"><h1>Jellybelly</h1></div>
+            <div class=\"logo\"><h1>Rasa</h1></div>
             <div class=\"sub\">Configure your Jellyfin connection</div>
             <div id=\"error\" class=\"alert error\"></div>
             <div id=\"success\" class=\"alert success\"></div>
@@ -343,7 +343,7 @@ func getSetupWizard() -> Response {
                 <input id=\"jellyfinUsername\" name=\"jellyfinUsername\" type=\"text\" placeholder=\"Your Jellyfin username\" required />
                 <label for=\"jellyfinPassword\">Jellyfin Password</label>
                 <input id=\"jellyfinPassword\" name=\"jellyfinPassword\" type=\"password\" placeholder=\"Your Jellyfin password\" required />
-                <button id=\"submitBtn\" type=\"submit\" class=\"btn\">🚀 Configure & Start Jellybelly</button>
+                <button id=\"submitBtn\" type=\"submit\" class=\"btn\">🚀 Configure & Start Rasa</button>
             </form>
         </div>
         <script>
@@ -368,7 +368,7 @@ func getSetupWizard() -> Response {
                     }
                 } catch (e) {
                     err.textContent = 'Error: ' + (e.message || e); err.style.display='block';
-                    submitBtn.disabled = false; submitBtn.textContent = '🚀 Configure & Start Jellybelly';
+                    submitBtn.disabled = false; submitBtn.textContent = '🚀 Configure & Start Rasa';
                 }
             });
         </script>

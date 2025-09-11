@@ -30,7 +30,7 @@ final class JellyfinService: Sendable {
         request.headers.add(name: "Content-Type", value: "application/json")
         // Jellyfin requires an identification header
         let deviceId = UUID().uuidString
-        let clientHeader = "MediaBrowser Client=\"Jellybelly\", Device=\"JellybellyServer\", DeviceId=\"\(deviceId)\", Version=\"1.0.0\""
+        let clientHeader = "MediaBrowser Client=\"Rasa\", Device=\"RasaServer\", DeviceId=\"\(deviceId)\", Version=\"1.0.0\""
         request.headers.add(name: "X-Emby-Authorization", value: clientHeader)
         // Minimal Jellyfin auth does not require prior token
         let payload: [String: String] = [

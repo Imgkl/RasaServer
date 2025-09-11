@@ -4,7 +4,7 @@
 Packages
 
 # Local data/config
-jellybelly.sqlite
+rasa.sqlite
 config
 logs
 data
@@ -14,9 +14,9 @@ data
 .gitignore
 
 # Node install caches
-frontend/jellybelly-web/node_modules
-frontend/jellybelly-web/.vite
-frontend/jellybelly-web/dist
+frontend/rasa-web/node_modules
+frontend/rasa-web/.vite
+frontend/rasa-web/dist
 
 # OS/editor noise
 .DS_Store

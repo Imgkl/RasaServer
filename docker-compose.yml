@@ -1,13 +1,13 @@
 version: '3.8'
 
 services:
-  jellybelly:
+  rasa:
     build: 
       context: .
       platforms:
         - linux/arm64  # Pi 4/5 ARM64
         - linux/amd64  # Development/x86
-    container_name: jellybelly-server
+    container_name: rasa-server
     restart: unless-stopped
     ports:
       - "3242:3242"
@@ -16,13 +16,12 @@ services:
       - ./config:/app/config
       - ./logs:/app/logs
     environment:
-      # Override config via environment variables
-      - JELLYBELLY_HOST=0.0.0.0
+      - RASA_HOST=0.0.0.0
       - WEBUI_PORT=3242
-      - JELLYBELLY_DATABASE_PATH=/app/data/jellybelly.sqlite
-      - JELLYBELLY_LOG_LEVEL=info
+      - RASA_DATABASE_PATH=/app/data/rasa.sqlite
+      - RASA_LOG_LEVEL=info
     networks:
-      - jellybelly-network
+      - rasa-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3242/health"]
       interval: 30s
@@ -35,7 +34,7 @@ services:
     cpu_count: 2
 
 networks:
-  jellybelly-network:
+  rasa-network:
     driver: bridge
 
 volumes:

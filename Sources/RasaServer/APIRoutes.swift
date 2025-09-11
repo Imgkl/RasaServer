@@ -7,11 +7,11 @@ import AsyncHTTPClient
 
 final class APIRoutes: @unchecked Sendable {
     let movieService: MovieService
-    let config: JellybellyConfiguration
+    let config: RasaConfiguration
     let logger = Logger(label: "APIRoutes")
     let httpClient: HTTPClient
 
-    init(movieService: MovieService, config: JellybellyConfiguration, httpClient: HTTPClient) {
+    init(movieService: MovieService, config: RasaConfiguration, httpClient: HTTPClient) {
         self.movieService = movieService
         self.config = config
         self.httpClient = httpClient
@@ -23,7 +23,7 @@ final class APIRoutes: @unchecked Sendable {
         // Version endpoint
         router.get("/version") { _, _ in
             struct VersionResponse: Codable { let version: String }
-            let v = ProcessInfo.processInfo.environment["JELLYBELLY_VERSION"] ?? "dev"
+            let v = ProcessInfo.processInfo.environment["RASA_VERSION"] ?? "dev"
             return try jsonResponse(VersionResponse(version: v))
         }
         

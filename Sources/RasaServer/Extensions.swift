@@ -276,7 +276,7 @@ extension Logger {
 
 // MARK: - Configuration Validation
 
-extension JellybellyConfiguration {
+extension RasaConfiguration {
     func validate() throws {
         // Validate required fields
         guard !jellyfinUrl.isEmpty else {

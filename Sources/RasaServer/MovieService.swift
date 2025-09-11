@@ -5,7 +5,7 @@ import HummingbirdFluent
 import Logging
 
 final class MovieService {
-  let config: JellybellyConfiguration
+  let config: RasaConfiguration
   let fluent: Fluent
   var jellyfinService: JellyfinService
   let llmService: LLMService
@@ -22,7 +22,7 @@ final class MovieService {
   private let maxRecentBannerCount = 20
 
   init(
-    config: JellybellyConfiguration,
+    config: RasaConfiguration,
     fluent: Fluent,
     jellyfinService: JellyfinService,
     llmService: LLMService
