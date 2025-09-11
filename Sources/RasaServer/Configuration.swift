@@ -2,7 +2,7 @@ import Foundation
 import Yams
 import Logging
 
-final class JellybellyConfiguration: @unchecked Sendable {
+final class RasaConfiguration: @unchecked Sendable {
     // Server Settings
     var host: String = "0.0.0.0"
     var port: Int = 8001
@@ -13,7 +13,7 @@ final class JellybellyConfiguration: @unchecked Sendable {
     var jellyfinUserId: String = ""
     
     // Database
-    var databasePath: String = "jellybelly.sqlite"
+    var databasePath: String = "rasa.sqlite"
     
     // BYOK - Bring Your Own Key (Optional)
     var anthropicApiKey: String? = nil
@@ -287,15 +287,15 @@ Form-first filmmaking—structure, sound, or image pushed into new shapes. Narra
     ]
 
     init() {
-        if let path = ProcessInfo.processInfo.environment["JELLYBELLY_DATABASE_PATH"], !path.isEmpty {
+        if let path = ProcessInfo.processInfo.environment["RASA_DATABASE_PATH"], !path.isEmpty {
             self.databasePath = path
         } else {
-            self.databasePath = "/app/data/jellybelly.sqlite"
+            self.databasePath = "/app/data/rasa.sqlite"
         }
     }
     
-    static func load(from path: String = "config.yaml") throws -> JellybellyConfiguration {
-        let config = JellybellyConfiguration()
+    static func load(from path: String = "config.yaml") throws -> RasaConfiguration {
+        let config = RasaConfiguration()
         
         // Check if config file exists
         guard FileManager.default.fileExists(atPath: path) else {
@@ -333,7 +333,7 @@ Form-first filmmaking—structure, sound, or image pushed into new shapes. Narra
     
     func save(to path: String = "config.yaml") throws {
         let base: [String: Any] = [
-            "# Jellybelly Server Configuration": "",
+            "# Rasa Server Configuration": "",
             "# Server settings": "",
             "host": host,
             "port": port,
