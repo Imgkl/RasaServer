@@ -2,9 +2,9 @@
 Trying to answer the age old question "What to watch tonight?"
 
 ## What is this?
-A small companion server that sits next to Jellyfin and organizes your library by mood. It powers the tvOS app (where you actually browse/watch) and serves a minimal web UI for setup, sync, and tag editing.
+A small companion docker app that sits next to Jellyfin and organizes your library by mood. It powers the RasaPlay app (where you actually browse/watch) and serves a minimal web UI for setup, sync, and tag editing.
 
-- tvOS, iOS, MacOS app: The viewing experience (separate app which is in WIP)
+- RasaPlay app: The viewing experience (separate app which is in WIP)
 - Web UI: For setup, sync, tags
 
 > [!IMPORTANT]
@@ -68,16 +68,18 @@ A small companion server that sits next to Jellyfin and organizes your library b
 
 ## Quick start
 - Docker (prebuilt image)
-  1) `docker pull ghcr.io/imgkl/rasaserver:latest`
-  2) `docker run -d --name rasa-server -p 3242:3242 \
+  1) Run this command
+   ```
+   docker pull ghcr.io/imgkl/rasaserver:latest && docker run -d --name rasa-server -p 3242:3242 \
          -v "$(pwd)/data:/app/data" \
          -v "$(pwd)/config:/app/config" \
          -v "$(pwd)/logs:/app/logs" \
          -e WEBUI_PORT=3242 \
          -e RASA_DATABASE_PATH=/app/data/rasa.sqlite \
-         --restart unless-stopped ghcr.io/imgkl/rasaserver:latest`
-  3) Visit `http://localhost:3242`
-  4) Complete Setup and run a Sync
+         --restart unless-stopped ghcr.io/imgkl/rasaserver:latest
+   ```
+  2) Visit `http://localhost:3242`
+  3) Complete Setup and run a Sync
 
 - Local
   1) `./run.sh`
@@ -85,7 +87,6 @@ A small companion server that sits next to Jellyfin and organizes your library b
   3) Complete Setup and Sync
   4) In the client app, set this server’s URL
 
-If you’re redirected to `/setup`, finish the wizard first.
 
 ## Roadmap
 
