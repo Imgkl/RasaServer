@@ -50,6 +50,10 @@ export default function App() {
   // Removed old batch tagging flow to simplify UI
   const importInputRef = useRef<HTMLInputElement>(null)
   const [version, setVersion] = useState<string>("")
+  const [anthKeySet, setAnthKeySet] = useState(false)
+  const [omdbKeySet, setOmdbKeySet] = useState(false)
+  const [anthInput, setAnthInput] = useState("")
+  const [omdbInput, setOmdbInput] = useState("")
 
   // Emoji map for moods (fallback to 🎬)
   const moodEmojiMap = useMemo<Record<string, string>>(() => ({
@@ -91,6 +95,16 @@ export default function App() {
   }
 
   useEffect(() => { fetchMoods(); fetchAllMovies(); fetchVersion() }, [])
+
+  async function fetchSettingsInfo() {
+    try {
+      const info = await api<{ jellyfin_url: string; jellyfin_api_key_set: boolean; jellyfin_user_id: string; anthropic_key_set: boolean; omdb_key_set: boolean }>(`/settings/info`)
+      setAnthKeySet(!!info.anthropic_key_set)
+      setOmdbKeySet(!!info.omdb_key_set)
+    } catch {}
+  }
+
+  useEffect(() => { if (settingsOpen) fetchSettingsInfo() }, [settingsOpen])
 
   async function api<T>(path: string, init?: RequestInit): Promise<T> {
     const res = await fetch(API + path, { headers: { 'Content-Type': 'application/json' }, ...init })
@@ -318,9 +332,23 @@ export default function App() {
       await api('/settings/keys', { method: 'POST', body: JSON.stringify({ anthropic_api_key: key }) })
       setShowApiKeys(false)
       alert('Anthropic API key saved successfully!')
+      setAnthKeySet(true)
+      setAnthInput("")
     } catch (error) {
       console.error('Failed to save API key:', error)
       alert('Failed to save API key')
+    }
+  }
+
+  async function saveOmdbKey(key: string) {
+    try {
+      await api('/settings/keys', { method: 'POST', body: JSON.stringify({ omdb_api_key: key }) })
+      alert('OMDb API key saved successfully!')
+      setOmdbKeySet(true)
+      setOmdbInput("")
+    } catch (error) {
+      console.error('Failed to save OMDb API key:', error)
+      alert('Failed to save OMDb API key')
     }
   }
 
@@ -668,7 +696,7 @@ export default function App() {
       {/* Settings Modal */}
       {settingsOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full mx-4 shadow-2xl border border-black/10">
+          <div className="bg-white rounded-3xl p-5 max-w-2xl w-full mx-4 shadow-2xl border border-black/10 max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold">Settings</h2>
               <button
@@ -679,93 +707,71 @@ export default function App() {
               </button>
             </div>
             <div className="space-y-6">
-              <button
-                className="w-full px-4 py-3 rounded-xl bg-[#0f1222] text-white hover:bg-black"
-                onClick={() => {
-                  setSettingsOpen(false);
-                  syncAll();
-                }}
-                disabled={loading}
-              >
-                {loading ? "Syncing…" : "Sync Library"}
-              </button>
-              <button
-                className="w-full px-4 py-3 rounded-xl bg-fuchsia-600 hover:bg-fuchsia-700 text-white"
-                onClick={() => {
-                  const queue = movies
-                    .filter((m) => (m.tags || []).length === 0)
-                    .map((m) => m.id as string);
-                  setAutoQueue(queue);
-                  setAutoTagIndex(0);
-                  const first = queue[0] || null;
-                  setCurrentAutoId(first);
-                  setAutoTaggerOpen(true);
-                  setSettingsOpen(false);
-                }}
-              >
-                AI Auto Tagger
-              </button>
-              <button
-                className="w-full px-4 py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white"
-                onClick={async () => {
-                  if (
-                    !confirm(
-                      "This will delete all movies from Rasa (not Jellyfin) and reset tag usage counts. Continue?"
-                    )
-                  )
-                    return;
-                  try {
-                    await api("/settings/clear-movies", { method: "POST" });
-                    setSettingsOpen(false);
-                    await fetchAllMovies();
-                  } catch (e) {
-                    alert("Failed to clear movies");
-                  }
-                }}
-              >
-                Clear Local Movies
-              </button>
-              <button
-                className="w-full px-4 py-3 rounded-xl bg-white text-[#0f1222] border border-black/10 hover:bg-gray-50"
-                onClick={() => setShowApiKeys(true)}
-              >
-                Anthropic API Key
-              </button>
-              <div className="border-t border-black/10 pt-4">
-                <button
-                  className="w-full px-4 py-3 rounded-xl bg-black/5 hover:bg-black/10 text-[#0f1222] border border-black/10"
-                  onClick={() => importInputRef.current?.click()}
-                >
-                  Import from JSON
-                </button>
-                <div className="h-2" />
-                <button
-                  className="w-full px-4 py-3 rounded-xl bg-black/5 hover:bg-black/10 text-[#0f1222] border border-black/10"
-                  onClick={exportTags}
-                >
-                  Export as JSON
-                </button>
-                <div className="h-2" />
+
+              {/* API Keys */}
+              <div className="space-y-3">
+                <div className="text-sm font-medium text-[#0f1222]">API Keys</div>
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="space-y-1">
+                    <label className="block text-xs text-black/60">Anthropic API Key</label>
+                    <div className="flex gap-2">
+                      <input id="anthropic-key-inline" className="flex-1 h-10 px-3 rounded-lg border border-black/10 focus:outline-none focus:ring-2 focus:ring-black/10" type="password" placeholder={anthKeySet && !anthInput ? '••••••••••••' : 'sk-ant-…'} value={anthInput} onChange={(e)=>setAnthInput(e.target.value)} onKeyDown={async (e)=>{ if(e.key==='Enter'){ const v=anthInput.trim(); if(v) await saveOpenAIKey(v) } }} />
+                      <button className="px-3 py-2 rounded-lg bg-[#0f1222] text-white hover:bg-black" onClick={async()=>{ const v=anthInput.trim(); if(v) await saveOpenAIKey(v) }}>Save</button>
+                    </div>
+                    <div className="text-[11px] text-black/50">Optional: Anthropic API Key for automatic movie tagging with AI.</div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="block text-xs text-black/60">OMDb API Key</label>
+                    <div className="flex gap-2">
+                      <input id="omdb-key-inline" className="flex-1 h-10 px-3 rounded-lg border border-black/10 focus:outline-none focus:ring-2 focus:ring-black/10" type="password" placeholder={omdbKeySet && !omdbInput ? '••••••••••••' : 'omdb api key'} value={omdbInput} onChange={(e)=>setOmdbInput(e.target.value)} onKeyDown={async (e)=>{ if(e.key==='Enter'){ const v=omdbInput.trim(); if(v) await saveOmdbKey(v) } }} />
+                      <button className="px-3 py-2 rounded-lg bg-[#0f1222] text-white hover:bg-black" onClick={async()=>{ const v=omdbInput.trim(); if(v) await saveOmdbKey(v) }}>Save</button>
+                    </div>
+                  </div>
+                </div>
+                <div className="text-[11px] text-black/50">Optional: OMDb API Key for IMDb, Rotten Tomatoes and Metacritic ratings.</div>
               </div>
-              <input
-                ref={importInputRef}
-                type="file"
-                accept="application/json"
-                hidden
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (file) await importTagsFile(file);
-                  if (e.target) e.target.value = "";
-                }}
-              />
-              <div className="border-t border-black/10 pt-4">
+
+              <div className="h-px bg-black/10" />
+
+              {/* Grid cards: Library, Auto Tagger, Data, Maintenance */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="rounded-2xl border border-black/10 p-4 bg-white">
+                  <div className="text-sm font-medium text-[#0f1222] mb-2">Library</div>
+                  <p className="text-xs text-black/50 mb-3">Sync your Jellyfin library now.</p>
+                  <button className="px-4 py-2.5 rounded-lg bg-[#0f1222] text-white hover:bg-black disabled:opacity-50" onClick={() => { setSettingsOpen(false); syncAll(); }} disabled={loading}>
+                    {loading ? 'Syncing…' : 'Sync Library'}
+                  </button>
+                </div>
+                <div className="rounded-2xl border border-black/10 p-4 bg-white">
+                  <div className="text-sm font-medium text-[#0f1222] mb-2">AI Auto Tagger</div>
+                  <p className="text-xs text-black/50 mb-3">Run AI suggestions for untagged movies.</p>
+                  <button className="px-4 py-2.5 rounded-lg border border-black/10 hover:bg-black/5" onClick={() => { const queue = movies.filter(m => (m.tags||[]).length === 0).map(m => m.id as string); setAutoQueue(queue); setAutoTagIndex(0); setCurrentAutoId(queue[0] || null); setAutoTaggerOpen(true); setSettingsOpen(false) }}>
+                    Launch Auto Tagger
+                  </button>
+                </div>
+                <div className="rounded-2xl border border-black/10 p-4 bg-white">
+                  <div className="text-sm font-medium text-[#0f1222] mb-2">Data</div>
+                  <div className="flex flex-wrap gap-2">
+                    <button className="px-4 py-2 rounded-lg border border-black/10 hover:bg-black/5" onClick={()=>importInputRef.current?.click()}>Import from JSON</button>
+                    <button className="px-4 py-2 rounded-lg border border-black/10 hover:bg-black/5" onClick={exportTags}>Export as JSON</button>
+                    <input ref={importInputRef} type="file" accept="application/json" hidden onChange={async (e)=>{ const file=e.target.files?.[0]; if(file) await importTagsFile(file); if(e.target) e.target.value='' }} />
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-black/10 p-4 bg-white">
+                  <div className="text-sm font-medium text-[#0f1222] mb-2">Maintenance</div>
+                  <p className="text-xs text-black/50 mb-3">Deletes local catalog and resets tag usage.</p>
+                  <button className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white" onClick={async()=>{ if(!confirm('This will delete all movies from Rasa (not Jellyfin) and reset tag usage counts. Continue?')) return; try { await api('/settings/clear-movies', { method: 'POST' }); setSettingsOpen(false); await fetchAllMovies(); } catch { alert('Failed to clear movies') } }}>Clear Local Movies</button>
+                </div>
+              </div>
+
+              <div className="h-px bg-black/10" />
+
+              {/* Jellyfin */}
+              <div className="space-y-3">
                 <JellyfinSetup />
               </div>
-              {version && (
-                <div className="pt-2 text-center text-xs text-black/50">
-                  {version}
-                </div>
-              )}
+
+              {version && <div className="pt-1 text-center text-xs text-black/50">{version}</div>}
             </div>
           </div>
         </div>
@@ -1302,4 +1308,4 @@ function JellyfinSetup() {
     </div>
   )
 }
-
+ 

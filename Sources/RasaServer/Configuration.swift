@@ -17,6 +17,7 @@ final class RasaConfiguration: @unchecked Sendable {
     
     // BYOK - Bring Your Own Key (Optional)
     var anthropicApiKey: String? = nil
+    var omdbApiKey: String? = nil
     
     // Auto-tagging settings
     var enableAutoTagging: Bool = false
@@ -317,6 +318,7 @@ Form-first filmmaking—structure, sound, or image pushed into new shapes. Narra
             config.jellyfinUserId = dict["jellyfin_user_id"] as? String ?? config.jellyfinUserId
             config.databasePath = dict["database_path"] as? String ?? config.databasePath
             config.anthropicApiKey = dict["anthropic_api_key"] as? String
+            config.omdbApiKey = dict["omdb_api_key"] as? String
             config.enableAutoTagging = dict["enable_auto_tagging"] as? Bool ?? config.enableAutoTagging
             config.maxAutoTags = dict["max_auto_tags"] as? Int ?? config.maxAutoTags
             config.autoTaggingPrompt = dict["auto_tagging_prompt"] as? String ?? config.autoTaggingPrompt
@@ -326,6 +328,10 @@ Form-first filmmaking—structure, sound, or image pushed into new shapes. Narra
         if (config.anthropicApiKey == nil || config.anthropicApiKey?.isEmpty == true),
            let envKey = ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"], !envKey.isEmpty {
             config.anthropicApiKey = envKey
+        }
+        if (config.omdbApiKey == nil || config.omdbApiKey?.isEmpty == true),
+           let envKey = ProcessInfo.processInfo.environment["OMDB_API_KEY"], !envKey.isEmpty {
+            config.omdbApiKey = envKey
         }
         
         return config
@@ -355,9 +361,10 @@ Form-first filmmaking—structure, sound, or image pushed into new shapes. Narra
             "auto_tagging_prompt": autoTaggingPrompt
         ]
         
-        // Persist anthropic key if present
+        // Persist anthropic/omdb keys if present
         var out = base
         if let key = anthropicApiKey, !key.isEmpty { out["anthropic_api_key"] = key }
+        if let key = omdbApiKey, !key.isEmpty { out["omdb_api_key"] = key }
         let yaml = try Yams.dump(object: out)
         try yaml.write(to: URL(fileURLWithPath: path), atomically: true, encoding: String.Encoding.utf8)
     }

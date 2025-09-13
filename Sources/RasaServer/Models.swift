@@ -426,6 +426,15 @@ struct ClientPlaybackStopPayload: Codable, Sendable {
 
 struct SuccessResponse: Codable, Sendable { let success: Bool }
 
+// MARK: - OMDb Cache DTOs
+struct OmdbCacheEntry: Codable, Sendable {
+    let imdbId: String
+    let ratings: [OmdbRating]
+    let fetchedAt: Date
+}
+
+struct OmdbRating: Codable, Sendable { let Source: String; let Value: String }
+
 // MARK: - Client Timeline DTOs
 struct ClientTimelineItem: Codable, Sendable {
     let year: ClientTimelineYear

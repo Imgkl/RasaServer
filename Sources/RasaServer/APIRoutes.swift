@@ -4,6 +4,7 @@ import HTTPTypes
 import FluentKit
 import Logging
 import AsyncHTTPClient
+import NIOCore
 
 final class APIRoutes: @unchecked Sendable {
     let movieService: MovieService
@@ -53,6 +54,9 @@ final class APIRoutes: @unchecked Sendable {
 
         // Clients endpoints
         addClientRoutes(to: api)
+
+        // OMDb endpoints
+        addOmdbRoutes(to: api)
     }
     
     // MARK: - Mood Routes
@@ -394,21 +398,74 @@ final class APIRoutes: @unchecked Sendable {
             return try jsonResponse(SuccessResponse(success: true))
         }
     }
+
+    // MARK: - OMDb Routes
+    private func addOmdbRoutes(to router: RouterGroup<BasicRequestContext>) {
+        let omdb = router.group("omdb")
+
+        struct OmdbRatingsResponse: Codable { let ratings: [OmdbRating] }
+        struct RawOmdbResponse: Codable { let Ratings: [OmdbRating]?; let Response: String? }
+
+        omdb.get("ratings") { request, context in
+            let imdbId = request.uri.queryParameters["imdbId"].map { String($0) }?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+            // Always return 200 with empty ratings if missing key/id
+            guard !imdbId.isEmpty else { return try jsonResponse(OmdbRatingsResponse(ratings: [])) }
+
+            // Load key from DB/config
+            let store = SettingsStore(db: self.movieService.fluent.db(), logger: self.logger)
+            try await store.ensureTable()
+            let savedKey = try await store.get("omdb_api_key") ?? (self.config.omdbApiKey ?? "")
+            guard !savedKey.isEmpty else { return try jsonResponse(OmdbRatingsResponse(ratings: [])) }
+
+            // Check cache (15 days)
+            let cache = OmdbCacheStore(db: self.movieService.fluent.db(), logger: self.logger)
+            try await cache.ensureTable()
+            if let cached = try await cache.get(imdbId: imdbId) {
+                let fifteenDays: TimeInterval = 15 * 24 * 60 * 60
+                if Date().timeIntervalSince(cached.fetchedAt) < fifteenDays {
+                    return try jsonResponse(OmdbRatingsResponse(ratings: cached.ratings))
+                }
+            }
+
+            // Fetch from OMDb
+            do {
+                let url = "http://www.omdbapi.com/?apikey=\(savedKey)&i=\(imdbId)"
+                let response = try await self.httpClient.get(url: url).get()
+                guard var body = response.body else { return try jsonResponse(OmdbRatingsResponse(ratings: [])) }
+                let data = body.readData(length: body.readableBytes) ?? Data()
+                let raw = try JSONDecoder().decode(RawOmdbResponse.self, from: data)
+                let ok = (raw.Response?.lowercased() == "true")
+                let ratings = ok ? (raw.Ratings ?? []) : []
+                // Update cache on success
+                if ok {
+                    try await cache.set(imdbId: imdbId, ratings: ratings)
+                }
+                return try jsonResponse(OmdbRatingsResponse(ratings: ratings))
+            } catch {
+                self.logger.warning("OMDb fetch failed: \(String(describing: error))")
+                return try jsonResponse(OmdbRatingsResponse(ratings: []))
+            }
+        }
+    }
     // MARK: - Settings Routes (BYOK)
     private func addSettingsRoutes(to router: RouterGroup<BasicRequestContext>) {
         let settings = router.group("settings")
 
         struct KeysPayload: Codable {
             let anthropic_api_key: String?
+            let omdb_api_key: String?
         }
 
         settings.post("keys") { request, context in
             let payload = try await request.decode(as: KeysPayload.self, context: context)
             if let v = payload.anthropic_api_key { self.config.anthropicApiKey = v }
+            if let v = payload.omdb_api_key { self.config.omdbApiKey = v }
             // Persist to DB (settings table)
             let store = SettingsStore(db: self.movieService.fluent.db(), logger: self.logger)
             try await store.ensureTable()
             try await store.set("anthropic_api_key", self.config.anthropicApiKey ?? "")
+            try await store.set("omdb_api_key", self.config.omdbApiKey ?? "")
             return try jsonResponse(["success": true])
         }
 
@@ -449,7 +506,7 @@ final class APIRoutes: @unchecked Sendable {
             return try jsonResponse(["success": true])
         }
 
-        struct SettingsInfo: Codable { let jellyfin_url: String; let jellyfin_api_key_set: Bool; let jellyfin_user_id: String; let anthropic_key_set: Bool }
+        struct SettingsInfo: Codable { let jellyfin_url: String; let jellyfin_api_key_set: Bool; let jellyfin_user_id: String; let anthropic_key_set: Bool; let omdb_key_set: Bool }
         settings.get("info") { request, context in
             let store = SettingsStore(db: self.movieService.fluent.db(), logger: self.logger)
             try await store.ensureTable()
@@ -457,11 +514,13 @@ final class APIRoutes: @unchecked Sendable {
             let uid = try await store.get("jellyfin_user_id") ?? self.config.jellyfinUserId
             let api = (try await store.get("jellyfin_api_key")) ?? self.config.jellyfinApiKey
             let anth = (try await store.get("anthropic_api_key")) ?? (self.config.anthropicApiKey ?? "")
+            let omdb = (try await store.get("omdb_api_key")) ?? (self.config.omdbApiKey ?? "")
             let info = SettingsInfo(
                 jellyfin_url: url,
                 jellyfin_api_key_set: !api.isEmpty,
                 jellyfin_user_id: uid,
-                anthropic_key_set: !anth.isEmpty
+                anthropic_key_set: !anth.isEmpty,
+                omdb_key_set: !omdb.isEmpty
             )
             return try jsonResponse(info)
         }
