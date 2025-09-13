@@ -91,10 +91,10 @@ A small companion docker app that sits next to Jellyfin and organizes your libra
 ## Roadmap
 
 - [x] Jellyfin Integeration
+- [x] Mood tagging.
 - [x] Auto tagging using AI & Claude BYOK support (Optional)
-- [x] Mood tagging
 - [x] Import and Export of tagged movies 
-- [x] Optional BYOK support for OMDb api to pull ratings from IMDb, Rotten Tomatoes and Metacritic.
+- [x] BYOK support for OMDb api to pull ratings from IMDb, Rotten Tomatoes and Metacritic. (Optional)
 - [ ] User Defined Tags
 - [ ] More to be added, based on the requirements 
 
