@@ -348,6 +348,13 @@ final class APIRoutes: @unchecked Sendable {
             return try jsonResponse(payload)
         }
 
+        // GET /api/v1/clients/movies/:id/similar - more like this (array)
+        movies.get(":id/similar") { request, context in
+            let id = try context.parameters.require("id")
+            let items = try await self.movieService.getSimilarClientMovies(id: String(id), maxCount: 12)
+            return try jsonResponse(items)
+        }
+
         // Playback reporting proxies
         struct StartPayload: Codable { let jellyfinId: String; let positionMs: Int?; let playMethod: String?; let audioStreamIndex: Int?; let subtitleStreamIndex: Int? }
         clients.post("playback/start") { request, context in

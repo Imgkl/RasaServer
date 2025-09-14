@@ -87,6 +87,29 @@ final class JellyfinService: Sendable {
         return jellyfinResponse.items
     }
 
+    /// Fetch items similar to a given item from Jellyfin (movies only)
+    func fetchSimilarItems(itemId: String, limit: Int = 12) async throws -> [JellyfinMovieMetadata] {
+        // Prefer the Items/{id}/Similar endpoint with explicit UserId for user data overlay
+        let base = "\(baseURL)/Items/\(itemId)/Similar"
+        let fields = "Overview,Genres,People,MediaStreams,ProviderIds,Studios,RunTimeTicks,UserData,ProductionYear,ImageBlurHashes"
+        let url = "\(base)?UserId=\(userId)&IncludeItemTypes=Movie&Limit=\(limit)&Fields=\(fields)"
+
+        var request = HTTPClientRequest(url: url)
+        request.method = .GET
+        request.headers.add(name: "X-MediaBrowser-Token", value: apiKey)
+        request.headers.add(name: "Accept", value: "application/json")
+
+        let response = try await httpClient.execute(request, timeout: .seconds(12))
+        guard response.status == .ok else {
+            throw JellyfinError.httpError(response.status.code, "Failed to fetch similar items for \(itemId)")
+        }
+        let data = try await response.body.collect(upTo: 5 * 1024 * 1024)
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .useDefaultKeys
+        let decoded = try decoder.decode(JellyfinItemsResponse.self, from: data)
+        return decoded.items
+    }
+
     // Fetch resume/continue-watching items for the user (movies only)
     func fetchResumeItems(limit: Int? = nil) async throws -> [JellyfinMovieMetadata] {
         let base = "\(baseURL)/Users/\(userId)/Items/Resume"

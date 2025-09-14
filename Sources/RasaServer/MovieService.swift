@@ -526,6 +526,90 @@ final class MovieService {
     return ClientMoviesListResponse(movies: items, totalCount: total)
   }
 
+  /// Return up to 24 movies similar to the given movie id (UUID or Jellyfin id)
+  /// Primary source: Jellyfin Similar API; Fallback: overlap by mood tags in local DB
+  func getSimilarClientMovies(id: String, maxCount: Int = 12) async throws -> [ClientMovieResponse] {
+    // Resolve seed movie
+    let seed = try await getMovieEntity(id: id)
+
+    // Try Jellyfin Similar first
+    do {
+      let similar = try await jellyfinService.fetchSimilarItems(itemId: seed.jellyfinId, limit: maxCount)
+      if !similar.isEmpty {
+        let ids = similar.map { $0.id }
+        let local = try await Movie.query(on: fluent.db())
+          .filter(\.$jellyfinId ~~ ids)
+          .with(\.$tags)
+          .all()
+        if !local.isEmpty {
+          // Preserve order from Jellyfin
+          let byId = Dictionary(uniqueKeysWithValues: local.map { ($0.jellyfinId, $0) })
+          var out: [ClientMovieResponse] = []
+          out.reserveCapacity(min(maxCount, local.count))
+          for meta in similar {
+            if let m = byId[meta.id], m.jellyfinId != seed.jellyfinId {
+              out.append(buildClientMovie(from: m, liveMeta: meta))
+              if out.count >= maxCount { break }
+            }
+          }
+          if !out.isEmpty { return out }
+        }
+      }
+    } catch {
+      // Ignore and fallback
+    }
+
+    // Fallback: overlap by mood tags (descending), tie-break by year closeness and genre/director overlap
+    let seedTags = try await MovieTag.query(on: fluent.db())
+      .filter(\.$movie.$id == seed.requireID())
+      .with(\.$tag)
+      .all()
+      .map { $0.tag }
+    let seedTagSlugs = Set(seedTags.map { $0.slug })
+
+    let candidates = try await Movie.query(on: fluent.db())
+      .filter(\.$id != seed.requireID())
+      .with(\.$tags)
+      .all()
+
+    struct ScoredMovie { let movie: Movie; let score: Int; let yearDelta: Int; let bonus: Int }
+    let seedYear = seed.year
+    let seedGenres = Set(seed.jellyfinMetadata?.genres ?? [])
+    let seedDirector = seed.jellyfinMetadata?.director?.lowercased()
+
+    var scored: [ScoredMovie] = []
+    scored.reserveCapacity(candidates.count)
+    for m in candidates {
+      let slugs = Set(m.tags.map { $0.slug })
+      let overlap = slugs.intersection(seedTagSlugs).count
+      if overlap == 0 { continue }
+      let yearDelta = {
+        guard let a = seedYear, let b = m.year else { return Int.max }
+        return abs(a - b)
+      }()
+      let genres = Set(m.jellyfinMetadata?.genres ?? [])
+      let genreOverlap = genres.intersection(seedGenres).count
+      let directorBonus: Int = {
+        guard let d1 = seedDirector, let d2 = m.jellyfinMetadata?.director?.lowercased() else { return 0 }
+        return d1 == d2 ? 1 : 0
+      }()
+      let bonus = min(2, genreOverlap) + directorBonus
+      scored.append(ScoredMovie(movie: m, score: overlap, yearDelta: yearDelta, bonus: bonus))
+    }
+
+    let ordered = scored.sorted { a, b in
+      if a.score != b.score { return a.score > b.score }
+      if a.bonus != b.bonus { return a.bonus > b.bonus }
+      if a.yearDelta != b.yearDelta { return a.yearDelta < b.yearDelta }
+      return a.movie.title < b.movie.title
+    }
+    let picked = ordered.prefix(maxCount).map { $0.movie }
+    if picked.isEmpty { return [] }
+    let live = try await jellyfinService.fetchItems(ids: picked.map { $0.jellyfinId })
+    let liveById = Dictionary(uniqueKeysWithValues: live.map { ($0.id, $0) })
+    return picked.map { buildClientMovie(from: $0, liveMeta: liveById[$0.jellyfinId]) }
+  }
+
   // MARK: - Clients Home helpers
   /// 5 unwatched movies selected deterministically using a salt (falls back to all if none unwatched)
   func getBannerMovies(maxCount: Int = 5, salt: String? = nil) async throws -> [ClientMovieResponse] {
