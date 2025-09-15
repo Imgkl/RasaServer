@@ -211,10 +211,160 @@ final class JellyfinService: Sendable {
         "\(baseURL)/Videos/\(itemId)/stream?container=\(container)&api_key=\(apiKey)"
     }
     
-    func getHlsStreamUrl(itemId: String) -> String {
-        "\(baseURL)/Videos/\(itemId)/master.m3u8?api_key=\(apiKey)"
+    func getHlsStreamUrl(itemId: String, mediaSourceId: String? = nil, audioStreamIndex: Int? = nil, videoStreamIndex: Int? = nil, subtitleStreamIndex: Int? = nil) -> String {
+        let sourceId = mediaSourceId ?? itemId
+        var queryParams = [
+            "api_key=\(apiKey)",
+            "MediaSourceId=\(sourceId)",
+            "DeviceId=RasaServer",
+            "PlaySessionId=\(UUID().uuidString)",
+            "VideoCodec=h264,hevc,av1",
+            "AudioCodec=aac,mp3,ac3,eac3",
+            "RequireAvc=false",
+            "SegmentContainer=ts",
+            "MinSegments=1",
+            "BreakOnNonKeyFrames=true",
+            "TranscodingMaxAudioChannels=2",
+            "EnableAudioVbrEncoding=true"
+        ]
+        
+        if let audioIndex = audioStreamIndex {
+            queryParams.append("AudioStreamIndex=\(audioIndex)")
+        }
+        
+        if let videoIndex = videoStreamIndex {
+            queryParams.append("VideoStreamIndex=\(videoIndex)")
+        }
+        
+        if let subtitleIndex = subtitleStreamIndex {
+            queryParams.append("SubtitleStreamIndex=\(subtitleIndex)")
+        }
+        
+        let queryString = queryParams.joined(separator: "&")
+        return "\(baseURL)/Videos/\(itemId)/master.m3u8?\(queryString)"
     }
 
+    // MARK: - Enhanced Playback URLs
+    
+    /// Get playback info for proper HLS streaming with all necessary parameters
+    func getPlaybackInfo(itemId: String, userId: String? = nil) async throws -> JellyfinPlaybackInfo {
+        let userIdParam = userId ?? self.userId
+        let url = "\(baseURL)/Items/\(itemId)/PlaybackInfo"
+        
+        var request = HTTPClientRequest(url: url)
+        request.method = .POST
+        request.headers.add(name: "X-MediaBrowser-Token", value: apiKey)
+        request.headers.add(name: "Content-Type", value: "application/json")
+        request.headers.add(name: "Accept", value: "application/json")
+        
+        let payload: [String: Any] = [
+            "UserId": userIdParam,
+            "DeviceProfile": getDeviceProfile()
+        ]
+        
+        let jsonData = try JSONSerialization.data(withJSONObject: payload)
+        request.body = .bytes(jsonData)
+        
+        let response = try await httpClient.execute(request, timeout: .seconds(10))
+        guard response.status == .ok else {
+            throw JellyfinError.httpError(response.status.code, "Failed to get playback info for \(itemId)")
+        }
+        
+        let data = try await response.body.collect(upTo: 2 * 1024 * 1024)
+        return try JSONDecoder().decode(JellyfinPlaybackInfo.self, from: data)
+    }
+    
+    /// Generate optimized HLS URL using playback info
+    func getOptimizedHlsUrl(itemId: String, playbackInfo: JellyfinPlaybackInfo? = nil, audioStreamIndex: Int? = nil, subtitleStreamIndex: Int? = nil) async throws -> String {
+        let info: JellyfinPlaybackInfo
+        if let playbackInfo = playbackInfo {
+            info = playbackInfo
+        } else {
+            info = try await getPlaybackInfo(itemId: itemId)
+        }
+        
+        guard let mediaSource = info.mediaSources.first else {
+            throw JellyfinError.noMediaSource
+        }
+        
+        // Use the best available audio stream if not specified
+        let audioIndex = audioStreamIndex ?? mediaSource.defaultAudioStreamIndex
+        
+        return getHlsStreamUrl(
+            itemId: itemId,
+            mediaSourceId: mediaSource.id,
+            audioStreamIndex: audioIndex,
+            videoStreamIndex: mediaSource.defaultVideoStreamIndex,
+            subtitleStreamIndex: subtitleStreamIndex
+        )
+    }
+    
+    /// Get device profile for optimal streaming
+    private func getDeviceProfile() -> [String: Any] {
+        return [
+            "Name": "RasaServer",
+            "Id": "RasaServer",
+            "MaxStreamingBitrate": 120000000, // 120 Mbps
+            "MaxStaticBitrate": 100000000,   // 100 Mbps
+            "MusicStreamingTranscodingBitrate": 384000,
+            "DirectPlayProfiles": [
+                [
+                    "Container": "mp4,m4v",
+                    "Type": "Video",
+                    "VideoCodec": "h264,hevc,av1",
+                    "AudioCodec": "aac,mp3,ac3,eac3,flac,alac"
+                ],
+                [
+                    "Container": "mkv",
+                    "Type": "Video",
+                    "VideoCodec": "h264,hevc,av1",
+                    "AudioCodec": "aac,mp3,ac3,eac3,dts,flac,vorbis"
+                ]
+            ],
+            "TranscodingProfiles": [
+                [
+                    "Container": "ts",
+                    "Type": "Video",
+                    "VideoCodec": "h264",
+                    "AudioCodec": "aac",
+                    "Protocol": "hls",
+                    "EstimateContentLength": false,
+                    "EnableMpegtsM2TsMode": false,
+                    "TranscodeSeekInfo": "Auto",
+                    "CopyTimestamps": false,
+                    "Context": "Streaming",
+                    "EnableSubtitlesInManifest": true
+                ]
+            ],
+            "ContainerProfiles": [],
+            "CodecProfiles": [
+                [
+                    "Type": "VideoAudio",
+                    "Codec": "aac",
+                    "Conditions": [
+                        [
+                            "Condition": "Equals",
+                            "Property": "IsSecondaryAudio",
+                            "Value": "false",
+                            "IsRequired": false
+                        ]
+                    ]
+                ]
+            ],
+            "ResponseProfiles": [],
+            "SubtitleProfiles": [
+                [
+                    "Format": "vtt",
+                    "Method": "External"
+                ],
+                [
+                    "Format": "srt",
+                    "Method": "External"
+                ]
+            ]
+        ]
+    }
+    
     // MARK: - Playback Reporting (proxy-friendly helpers)
     func reportPlaybackStart(itemId: String, positionMs: Int?, playMethod: String?, audioStreamIndex: Int?, subtitleStreamIndex: Int?) async throws {
         let url = "\(baseURL)/Sessions/Playing"
@@ -412,6 +562,7 @@ enum JellyfinError: Error, CustomStringConvertible {
     case httpError(UInt, String)
     case invalidResponse
     case authenticationFailed
+    case noMediaSource
     case movieNotFound(String)
     case connectionFailed
     
@@ -422,7 +573,9 @@ enum JellyfinError: Error, CustomStringConvertible {
         case .invalidResponse:
             return "Invalid response from Jellyfin server"
         case .authenticationFailed:
-            return "Authentication failed - check API key and user ID"
+            return "Authentication failed with Jellyfin server"
+        case .noMediaSource:
+            return "No media source available for playback"
         case .movieNotFound(let id):
             return "Movie not found: \(id)"
         case .connectionFailed:
