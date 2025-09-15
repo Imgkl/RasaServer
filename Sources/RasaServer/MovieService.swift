@@ -452,7 +452,7 @@ final class MovieService {
     let movie = try await getMovieEntity(id: movieId)
 
     let directPlayUrl = jellyfinService.getStreamUrl(itemId: movie.jellyfinId)
-    let hlsUrl = try await jellyfinService.getOptimizedHlsUrl(itemId: movie.jellyfinId)
+    let hlsUrl = try await jellyfinService.getContextualHlsUrl(itemId: movie.jellyfinId)
 
 
     // Get media streams from Jellyfin metadata
@@ -803,7 +803,7 @@ final class MovieService {
     let imdbId =
       movie.jellyfinMetadata?.providerIds?["Imdb"] ?? movie.jellyfinMetadata?.providerIds?["IMDb"]
     let direct = jellyfinService.getStreamUrl(itemId: movie.jellyfinId)
-    let hls = jellyfinService.getHlsStreamUrl(itemId: movie.jellyfinId)
+    let hls = jellyfinService.getContextualWorkingHlsUrl(itemId: movie.jellyfinId)
     let images = ClientImages(
       poster: jellyfinService.getPosterUrl(itemId: movie.jellyfinId),
       backdrop: jellyfinService.getBackdropUrl(itemId: movie.jellyfinId),
