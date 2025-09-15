@@ -452,7 +452,8 @@ final class MovieService {
     let movie = try await getMovieEntity(id: movieId)
 
     let directPlayUrl = jellyfinService.getStreamUrl(itemId: movie.jellyfinId)
-    let hlsUrl = jellyfinService.getHlsStreamUrl(itemId: movie.jellyfinId)
+    let hlsUrl = try await jellyfinService.getOptimizedHlsUrl(itemId: movie.jellyfinId)
+
 
     // Get media streams from Jellyfin metadata
     let subtitleTracks =
