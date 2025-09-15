@@ -211,22 +211,37 @@ final class JellyfinService: Sendable {
         "\(baseURL)/Videos/\(itemId)/stream?container=\(container)&api_key=\(apiKey)"
     }
     
-    func getHlsStreamUrl(itemId: String, mediaSourceId: String? = nil, audioStreamIndex: Int? = nil, videoStreamIndex: Int? = nil, subtitleStreamIndex: Int? = nil) -> String {
+    func getHlsStreamUrl(itemId: String, mediaSourceId: String? = nil, audioStreamIndex: Int? = nil, videoStreamIndex: Int? = nil, subtitleStreamIndex: Int? = nil, videoCodec: String? = nil, audioCodec: String? = nil) -> String {
         let sourceId = mediaSourceId ?? itemId
         var queryParams = [
             "api_key=\(apiKey)",
             "MediaSourceId=\(sourceId)",
             "DeviceId=RasaServer",
-            "PlaySessionId=\(UUID().uuidString)",
-            "VideoCodec=h264,hevc,av1",
-            "AudioCodec=aac,mp3,ac3,eac3",
+            "PlaySessionId=\(UUID().uuidString)"
+        ]
+        
+        // Use specific codecs if provided, otherwise use generic lists
+        if let videoCodec = videoCodec {
+            queryParams.append("VideoCodec=\(videoCodec)")
+        } else {
+            queryParams.append("VideoCodec=h264,hevc,av1")
+        }
+        
+        if let audioCodec = audioCodec {
+            queryParams.append("AudioCodec=\(audioCodec)")
+        } else {
+            queryParams.append("AudioCodec=aac,mp3,ac3,eac3")
+        }
+        
+        // Add streaming parameters for transcoding fallback
+        queryParams.append(contentsOf: [
             "RequireAvc=false",
             "SegmentContainer=ts",
             "MinSegments=1",
             "BreakOnNonKeyFrames=true",
             "TranscodingMaxAudioChannels=2",
             "EnableAudioVbrEncoding=true"
-        ]
+        ])
         
         if let audioIndex = audioStreamIndex {
             queryParams.append("AudioStreamIndex=\(audioIndex)")
@@ -274,7 +289,7 @@ final class JellyfinService: Sendable {
         return try JSONDecoder().decode(JellyfinPlaybackInfo.self, from: data)
     }
     
-    /// Generate optimized HLS URL using playback info
+    /// Generate optimized HLS URL using playback info with original codecs for direct streaming
     func getOptimizedHlsUrl(itemId: String, playbackInfo: JellyfinPlaybackInfo? = nil, audioStreamIndex: Int? = nil, subtitleStreamIndex: Int? = nil) async throws -> String {
         let info: JellyfinPlaybackInfo
         if let playbackInfo = playbackInfo {
@@ -287,15 +302,25 @@ final class JellyfinService: Sendable {
             throw JellyfinError.noMediaSource
         }
         
-        // Use the best available audio stream if not specified
+        // Extract original codecs from MediaStreams for direct streaming
+        let videoStream = mediaSource.mediaStreams?.first { $0.type.lowercased() == "video" }
+        let audioStream = mediaSource.mediaStreams?.first { $0.type.lowercased() == "audio" && $0.isDefault == true }
+        
+        let videoCodec = videoStream?.codec
+        let audioCodec = audioStream?.codec
+        
+        // Use specified indexes or defaults
         let audioIndex = audioStreamIndex ?? mediaSource.defaultAudioStreamIndex
+        let videoIndex = mediaSource.defaultVideoStreamIndex
         
         return getHlsStreamUrl(
             itemId: itemId,
             mediaSourceId: mediaSource.id,
             audioStreamIndex: audioIndex,
-            videoStreamIndex: mediaSource.defaultVideoStreamIndex,
-            subtitleStreamIndex: subtitleStreamIndex
+            videoStreamIndex: videoIndex,
+            subtitleStreamIndex: subtitleStreamIndex,
+            videoCodec: videoCodec,
+            audioCodec: audioCodec
         )
     }
     
