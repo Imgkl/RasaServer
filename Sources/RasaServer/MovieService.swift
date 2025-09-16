@@ -3,6 +3,7 @@ import FluentKit
 import Foundation
 import HummingbirdFluent
 import Logging
+@preconcurrency import JellyfinAPI
 
 final class MovieService {
   let config: RasaConfiguration
@@ -64,9 +65,9 @@ final class MovieService {
   // MARK: - Reconfigure Jellyfin at runtime
   func reconfigureJellyfin(baseURL: String, apiKey: String, userId: String) {
     // Reuse the shared HTTP client from existing service to avoid leaks
-    let client = self.jellyfinService.client
+    let httpClient = self.jellyfinService.httpClient
     self.jellyfinService = JellyfinService(
-      baseURL: baseURL, apiKey: apiKey, userId: userId, httpClient: client)
+      baseURL: baseURL, apiKey: apiKey, userId: userId, httpClient: httpClient)
     logger.info("Jellyfin service reconfigured at runtime")
   }
 
@@ -85,10 +86,10 @@ final class MovieService {
     let key = try SecretsManager.loadOrCreateKey(logger: logger)
     let password = try SecretsManager.decryptString(encPwd, key: key)
     // Login using shared client
-    let http = self.jellyfinService.client
+    let httpClient = self.jellyfinService.httpClient
     do {
       let auth = try await JellyfinService.login(
-        baseURL: url, username: username, password: password, httpClient: http)
+        baseURL: url, username: username, password: password, httpClient: httpClient)
       // Save new token
       try await store.set("jellyfin_api_key", auth.token)
       try await store.set("jellyfin_user_id", auth.userId)
@@ -448,51 +449,7 @@ final class MovieService {
 
   // MARK: - Playback
 
-  func getPlaybackUrls(movieId: String, format: String) async throws -> PlaybackUrlsResponse {
-    let movie = try await getMovieEntity(id: movieId)
-
-    let directPlayUrl = jellyfinService.getStreamUrl(itemId: movie.jellyfinId)
-    let hlsUrl = try await jellyfinService.getContextualHlsUrl(itemId: movie.jellyfinId)
-
-
-    // Get media streams from Jellyfin metadata
-    let subtitleTracks =
-      movie.jellyfinMetadata?.mediaStreams
-      .filter { $0.type.lowercased() == "subtitle" }
-      .map { stream in
-        SubtitleTrack(
-          index: stream.index,
-          title: stream.title,
-          language: stream.language,
-          codec: stream.codec ?? "unknown",
-          isForced: stream.isForced ?? false,
-          isDefault: stream.isDefault ?? false,
-          url: nil  // Will be populated by subtitle service
-        )
-      } ?? []
-
-    let audioTracks =
-      movie.jellyfinMetadata?.mediaStreams
-      .filter { $0.type.lowercased() == "audio" }
-      .map { stream in
-        AudioTrack(
-          index: stream.index,
-          title: stream.title,
-          language: stream.language,
-          codec: stream.codec ?? "unknown",
-          channels: nil,
-          isDefault: stream.isDefault ?? false
-        )
-      } ?? []
-
-    return PlaybackUrlsResponse(
-      directPlayUrl: format == "direct" ? directPlayUrl : nil,
-      hlsUrl: hlsUrl,
-      subtitleTracks: subtitleTracks,
-      audioTracks: audioTracks
-    )
-  }
-
+  
   func getAvailableSubtitles(movieId: String) async throws -> [SubtitleTrack] {
     let movie = try await getMovieEntity(id: movieId)
 
@@ -535,7 +492,7 @@ final class MovieService {
 
     // Try Jellyfin Similar first
     do {
-      let similar = try await jellyfinService.fetchSimilarItems(itemId: seed.jellyfinId, limit: maxCount)
+      let similar = try await jellyfinService.getSimilarMovies(to: seed.jellyfinId, limit: maxCount)
       if !similar.isEmpty {
         let ids = similar.map { $0.id }
         let local = try await Movie.query(on: fluent.db())
@@ -647,11 +604,11 @@ final class MovieService {
   }
 
   /// Movies with progress for continue watching (movies only), sorted by last played desc
-  func getContinueWatchingMovies() async throws -> [ClientMovieResponse] {
+  func getContinueWatchingMovies(maxCount: Int = 10) async throws -> [ClientMovieResponse] {
     // Pull resume items from Jellyfin and map to local movies
-    let resume = try await jellyfinService.fetchResumeItems()
-    if resume.isEmpty { return [] }
-    let ids = resume.map { $0.id }
+    let resumeItems = try await jellyfinService.getResumeItems(limit: maxCount)
+    if resumeItems.isEmpty { return [] }
+    let ids = resumeItems.map { $0.id }
     // Load matching local entities
     let local = try await Movie.query(on: fluent.db())
       .filter(\.$jellyfinId ~~ ids)
@@ -660,8 +617,8 @@ final class MovieService {
     let byId = Dictionary(uniqueKeysWithValues: local.map { ($0.jellyfinId, $0) })
     // Keep original resume order
     var out: [ClientMovieResponse] = []
-    out.reserveCapacity(resume.count)
-    for meta in resume {
+    out.reserveCapacity(resumeItems.count)
+    for meta in resumeItems {
       if let m = byId[meta.id] {
         out.append(buildClientMovie(from: m, liveMeta: meta))
       }
@@ -671,7 +628,7 @@ final class MovieService {
 
   /// 10 newest movies by Jellyfin DateCreated desc (server truth)
   func getRecentlyAddedMovies(maxCount: Int = 10) async throws -> [ClientMovieResponse] {
-    let recent = try await jellyfinService.fetchRecentlyAddedMovies(limit: maxCount)
+    let recent = try await jellyfinService.getRecentlyAddedMovies(limit: maxCount)
     if recent.isEmpty { return [] }
     // Map to local models preserving order
     let ids = recent.map { $0.id }
@@ -802,14 +759,13 @@ final class MovieService {
   private func buildClientMovie(from movie: Movie, liveMeta: JellyfinMovieMetadata? = nil) -> ClientMovieResponse {
     let imdbId =
       movie.jellyfinMetadata?.providerIds?["Imdb"] ?? movie.jellyfinMetadata?.providerIds?["IMDb"]
-    let direct = jellyfinService.getStreamUrl(itemId: movie.jellyfinId)
-    let hls = jellyfinService.getContextualWorkingHlsUrl(itemId: movie.jellyfinId)
+    
+    // All image URLs stored in database with existence validation during sync
     let images = ClientImages(
-      poster: jellyfinService.getPosterUrl(itemId: movie.jellyfinId),
-      backdrop: jellyfinService.getBackdropUrl(itemId: movie.jellyfinId),
-      titleLogo: jellyfinService.getLogoUrl(itemId: movie.jellyfinId),
+      poster: movie.posterUrl,
+      backdrop: movie.backdropUrl,
+      titleLogo: movie.logoUrl
     )
-    let player = ClientPlayer(hlsUrl: hls, directPlayUrl: direct)
     let effectiveMeta = liveMeta ?? movie.jellyfinMetadata
     let ticks = effectiveMeta?.userData?.playbackPositionTicks ?? 0
     let progressMs: Int? = ticks > 0 ? Int(ticks / 10_000) : nil
@@ -830,7 +786,6 @@ final class MovieService {
       images: images,
       tags: movie.tags.map(MinimalTagResponse.init),
       imdbId: imdbId,
-      player: player,
       isWatched: effectiveMeta?.userData?.played ?? false,
       progressMs: progressMs,
       progressPercent: progressPercent
@@ -986,11 +941,14 @@ final class MovieService {
             existing.genres = jellyfinMovie.genres
             existing.director = jellyfinMovie.director
             existing.cast = jellyfinMovie.cast
-            existing.posterUrl = jellyfinService.getPosterUrl(itemId: jellyfinMovie.id)
-            
-            // Validate backdrop URL before storing
-            let backdropUrl = jellyfinService.getBackdropUrl(itemId: jellyfinMovie.id)
-            existing.backdropUrl = await validateImageUrl(backdropUrl) ? backdropUrl : nil
+            // Store all image URLs with existence validation
+            if let baseItem = try? await jellyfinService.fetchMovie(id: jellyfinMovie.id) {
+              logger.info("Fetching images for existing movie: \(jellyfinMovie.name)")
+              existing.posterUrl = jellyfinService.getImageUrl(for: baseItem, imageType: .primary, quality: 85)
+              existing.backdropUrl = jellyfinService.getImageUrl(for: baseItem, imageType: .backdrop, quality: 85)
+              existing.logoUrl = jellyfinService.getImageUrl(for: baseItem, imageType: .logo, quality: 85)
+              logger.info("Image URLs - Poster: \(existing.posterUrl ?? "nil"), Backdrop: \(existing.backdropUrl ?? "nil"), Logo: \(existing.logoUrl ?? "nil")")
+            }
             
             existing.jellyfinMetadata = jellyfinMovie
 
@@ -1001,11 +959,14 @@ final class MovieService {
           } else {
             // Create new movie
             let movie = jellyfinMovie.toMovie()
-            movie.posterUrl = jellyfinService.getPosterUrl(itemId: jellyfinMovie.id)
-            
-            // Validate backdrop URL before storing
-            let backdropUrl = jellyfinService.getBackdropUrl(itemId: jellyfinMovie.id)
-            movie.backdropUrl = await validateImageUrl(backdropUrl) ? backdropUrl : nil
+            // Store all image URLs with existence validation
+            if let baseItem = try? await jellyfinService.fetchMovie(id: jellyfinMovie.id) {
+              logger.info("Fetching images for new movie: \(jellyfinMovie.name)")
+              movie.posterUrl = jellyfinService.getImageUrl(for: baseItem, imageType: .primary, quality: 85)
+              movie.backdropUrl = jellyfinService.getImageUrl(for: baseItem, imageType: .backdrop, quality: 85)
+              movie.logoUrl = jellyfinService.getImageUrl(for: baseItem, imageType: .logo, quality: 85)
+              logger.info("Image URLs - Poster: \(movie.posterUrl ?? "nil"), Backdrop: \(movie.backdropUrl ?? "nil"), Logo: \(movie.logoUrl ?? "nil")")
+            }
 
             try await movie.save(on: fluent.db())
             stats.moviesUpdated += 1
@@ -1107,7 +1068,7 @@ final class MovieService {
     do {
       var request = HTTPClientRequest(url: url)
       request.method = .HEAD
-      let response = try await jellyfinService.client.execute(request, timeout: .seconds(5))
+      let response = try await jellyfinService.httpClient.execute(request, timeout: .seconds(5))
       return response.status == .ok
     } catch {
       logger.debug("Image validation failed for \(url): \(error)")

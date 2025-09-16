@@ -138,13 +138,6 @@ final class APIRoutes: @unchecked Sendable {
             ))
         }
         
-        // GET /api/v1/movies/:id/play - Get playback URLs
-        movies.get(":id/play") { request, context in
-            let movieId = try context.parameters.require("id")
-            let format = request.uri.queryParameters["format"].map { String($0) } ?? "hls"
-            
-            return try jsonResponse(try await self.movieService.getPlaybackUrls(movieId: String(movieId), format: format))
-        }
         
         // GET /api/v1/movies/:id/subtitles - Get available subtitles
         movies.get(":id/subtitles") { request, context in
@@ -355,12 +348,42 @@ final class APIRoutes: @unchecked Sendable {
             return try jsonResponse(items)
         }
 
+        // GET /api/v1/clients/stream/:jellyfinId - Get streaming URLs on demand
+        clients.get("stream/:jellyfinId") { request, context in
+            let jellyfinId = try context.parameters.require("jellyfinId")
+            
+            // Parse optional stream indices from query parameters
+            let audioStreamIndex = request.uri.queryParameters["audioStreamIndex"].flatMap { Int(String($0)) }
+            let subtitleStreamIndex = request.uri.queryParameters["subtitleStreamIndex"].flatMap { Int(String($0)) }
+            let startPositionTicks = request.uri.queryParameters["startPositionTicks"].flatMap { Int64(String($0)) }
+            
+            // Generate session ID for this streaming session
+            let playSessionId = UUID().uuidString
+            
+            // Direct stream URL with all parameters (no transcoding)
+            let streamUrl = self.movieService.jellyfinService.getStreamUrl(
+                itemId: String(jellyfinId),
+                playSessionId: playSessionId,
+                startPositionTicks: startPositionTicks,
+                audioStreamIndex: audioStreamIndex,
+                subtitleStreamIndex: subtitleStreamIndex
+            )
+            
+            struct StreamResponse: Codable {
+                let streamUrl: String
+                let playSessionId: String
+            }
+            
+            return try jsonResponse(StreamResponse(streamUrl: streamUrl, playSessionId: playSessionId))
+        }
+
         // Playback reporting proxies
-        struct StartPayload: Codable { let jellyfinId: String; let positionMs: Int?; let playMethod: String?; let audioStreamIndex: Int?; let subtitleStreamIndex: Int? }
+        struct StartPayload: Codable { let jellyfinId: String; let playSessionId: String; let positionMs: Int?; let playMethod: String?; let audioStreamIndex: Int?; let subtitleStreamIndex: Int? }
         clients.post("playback/start") { request, context in
             let payload = try await request.decode(as: StartPayload.self, context: context)
             try await self.movieService.jellyfinService.reportPlaybackStart(
                 itemId: payload.jellyfinId,
+                playSessionId: payload.playSessionId,
                 positionMs: payload.positionMs,
                 playMethod: payload.playMethod,
                 audioStreamIndex: payload.audioStreamIndex,
@@ -369,33 +392,41 @@ final class APIRoutes: @unchecked Sendable {
             return try jsonResponse(SuccessResponse(success: true))
         }
 
-        struct ProgressPayload: Codable { let jellyfinId: String; let positionMs: Int; let isPaused: Bool? }
+        struct ProgressPayload: Codable { let jellyfinId: String; let playSessionId: String; let positionMs: Int; let isPaused: Bool? }
         clients.post("playback/progress") { request, context in
             let payload = try await request.decode(as: ProgressPayload.self, context: context)
             try await self.movieService.jellyfinService.reportPlaybackProgress(
                 itemId: payload.jellyfinId,
+                playSessionId: payload.playSessionId,
                 positionMs: payload.positionMs,
                 isPaused: payload.isPaused
             )
             return try jsonResponse(SuccessResponse(success: true))
         }
 
-        struct StopPayload: Codable { let jellyfinId: String; let positionMs: Int? }
+        struct StopPayload: Codable { let jellyfinId: String; let playSessionId: String; let positionMs: Int? }
         clients.post("playback/stop") { request, context in
             let payload = try await request.decode(as: StopPayload.self, context: context)
             try await self.movieService.jellyfinService.reportPlaybackStopped(
                 itemId: payload.jellyfinId,
+                playSessionId: payload.playSessionId,
                 positionMs: payload.positionMs
             )
             return try jsonResponse(SuccessResponse(success: true))
         }
 
         // Watched state
-        struct WatchedPayload: Codable { let jellyfinId: String; let positionMs: Int? }
+        struct WatchedPayload: Codable { let jellyfinId: String; let playSessionId: String?; let positionMs: Int? }
         clients.post("watched") { request, context in
             let payload = try await request.decode(as: WatchedPayload.self, context: context)
             // If position is provided (possibly in-progress), stop first to finalize session
-            if let pos = payload.positionMs { try await self.movieService.jellyfinService.reportPlaybackStopped(itemId: payload.jellyfinId, positionMs: pos) }
+            if let pos = payload.positionMs, let sessionId = payload.playSessionId {
+                try await self.movieService.jellyfinService.reportPlaybackStopped(
+                    itemId: payload.jellyfinId,
+                    playSessionId: sessionId,
+                    positionMs: pos
+                )
+            }
             try await self.movieService.jellyfinService.markItemPlayed(itemId: payload.jellyfinId)
             return try jsonResponse(SuccessResponse(success: true))
         }
@@ -581,12 +612,6 @@ struct TagsListResponse: Codable, Sendable {
     let totalCount: Int
 }
 
-struct PlaybackUrlsResponse: Codable, Sendable {
-    let directPlayUrl: String?
-    let hlsUrl: String
-    let subtitleTracks: [SubtitleTrack]
-    let audioTracks: [AudioTrack]
-}
 
 struct SubtitleTrack: Codable, Sendable {
     let index: Int
@@ -598,14 +623,6 @@ struct SubtitleTrack: Codable, Sendable {
     let url: String?
 }
 
-struct AudioTrack: Codable, Sendable {
-    let index: Int
-    let title: String?
-    let language: String?
-    let codec: String
-    let channels: Int?
-    let isDefault: Bool
-}
 
 struct SyncStatusResponse: Codable, Sendable {
     let isRunning: Bool

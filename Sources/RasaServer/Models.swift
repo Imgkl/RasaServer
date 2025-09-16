@@ -43,6 +43,9 @@ final class Movie: Model, @unchecked Sendable {
     @Field(key: "backdrop_url")
     var backdropUrl: String?
     
+    @Field(key: "logo_url")
+    var logoUrl: String?
+    
     @Field(key: "jellyfin_metadata")
     var jellyfinMetadata: JellyfinMovieMetadata?
     
@@ -70,6 +73,7 @@ final class Movie: Model, @unchecked Sendable {
         cast: [String] = [],
         posterUrl: String? = nil,
         backdropUrl: String? = nil,
+        logoUrl: String? = nil,
         jellyfinMetadata: JellyfinMovieMetadata? = nil
     ) {
         self.id = id
@@ -84,6 +88,7 @@ final class Movie: Model, @unchecked Sendable {
         self.cast = cast
         self.posterUrl = posterUrl
         self.backdropUrl = backdropUrl
+        self.logoUrl = logoUrl
         self.jellyfinMetadata = jellyfinMetadata
     }
 }
@@ -378,7 +383,6 @@ struct ClientMovieResponse: Codable, Sendable {
     let images: ClientImages
     let tags: [MinimalTagResponse]
     let imdbId: String?
-    let player: ClientPlayer
     let isWatched: Bool
     let progressMs: Int?
     let progressPercent: Float?
@@ -392,36 +396,12 @@ struct ClientImages: Codable, Sendable {
 
 
 
-struct ClientPlayer: Codable, Sendable {
-    let hlsUrl: String
-    let directPlayUrl: String?
-}
 
 
 
 struct ClientMoviesListResponse: Codable, Sendable {
     let movies: [ClientMovieResponse]
     let totalCount: Int
-}
-
-// MARK: - Client Playback DTOs
-struct ClientPlaybackStartPayload: Codable, Sendable {
-    let jellyfinId: String
-    let positionMs: Int?
-    let playMethod: String? // "DirectPlay" | "Transcode"
-    let audioStreamIndex: Int?
-    let subtitleStreamIndex: Int?
-}
-
-struct ClientPlaybackProgressPayload: Codable, Sendable {
-    let jellyfinId: String
-    let positionMs: Int
-    let isPaused: Bool?
-}
-
-struct ClientPlaybackStopPayload: Codable, Sendable {
-    let jellyfinId: String
-    let positionMs: Int?
 }
 
 struct SuccessResponse: Codable, Sendable { let success: Bool }
@@ -512,118 +492,6 @@ struct ValidationError: Error, CustomStringConvertible {
     var description: String { message }
 }
 
-// MARK: - Jellyfin Playback Info Models
-struct JellyfinPlaybackInfo: Codable, Sendable {
-    let mediaSources: [JellyfinMediaSource]
-    let playSessionId: String?
-    
-    enum CodingKeys: String, CodingKey {
-        case mediaSources = "MediaSources"
-        case playSessionId = "PlaySessionId"
-    }
-}
-
-struct JellyfinMediaSource: Codable, Sendable {
-    let id: String
-    let container: String?
-    let size: Int64?
-    let name: String?
-    let isRemote: Bool
-    let etag: String?
-    let runTimeTicks: Int64?
-    let readAtNativeFramerate: Bool
-    let ignoreDts: Bool
-    let ignoreIndex: Bool
-    let genPtsInput: Bool
-    let supportsTranscoding: Bool
-    let supportsDirectStream: Bool
-    let supportsDirectPlay: Bool
-    let isInfiniteStream: Bool
-    let requiresOpening: Bool
-    let openToken: String?
-    let requiresClosing: Bool
-    let liveStreamId: String?
-    let bufferMs: Int?
-    let requiresLooping: Bool
-    let supportsProbing: Bool
-    let videoType: String?
-    let isoType: String?
-    let video3DFormat: String?
-    let mediaStreams: [JellyfinMediaStream]?
-    let mediaAttachments: [JellyfinMediaAttachment]?
-    let formats: [String]?
-    let bitrate: Int?
-    let timestamp: String?
-    let requiredHttpHeaders: [String: String]?
-    let transcodingUrl: String?
-    let transcodingSubProtocol: String?
-    let transcodingContainer: String?
-    let analyzeDurationMs: Int?
-    let defaultAudioStreamIndex: Int?
-    let defaultSubtitleStreamIndex: Int?
-    let defaultVideoStreamIndex: Int?
-    
-    enum CodingKeys: String, CodingKey {
-        case id = "Id"
-        case container = "Container"
-        case size = "Size"
-        case name = "Name"
-        case isRemote = "IsRemote"
-        case etag = "ETag"
-        case runTimeTicks = "RunTimeTicks"
-        case readAtNativeFramerate = "ReadAtNativeFramerate"
-        case ignoreDts = "IgnoreDts"
-        case ignoreIndex = "IgnoreIndex"
-        case genPtsInput = "GenPtsInput"
-        case supportsTranscoding = "SupportsTranscoding"
-        case supportsDirectStream = "SupportsDirectStream"
-        case supportsDirectPlay = "SupportsDirectPlay"
-        case isInfiniteStream = "IsInfiniteStream"
-        case requiresOpening = "RequiresOpening"
-        case openToken = "OpenToken"
-        case requiresClosing = "RequiresClosing"
-        case liveStreamId = "LiveStreamId"
-        case bufferMs = "BufferMs"
-        case requiresLooping = "RequiresLooping"
-        case supportsProbing = "SupportsProbing"
-        case videoType = "VideoType"
-        case isoType = "IsoType"
-        case video3DFormat = "Video3DFormat"
-        case mediaStreams = "MediaStreams"
-        case mediaAttachments = "MediaAttachments"
-        case formats = "Formats"
-        case bitrate = "Bitrate"
-        case timestamp = "Timestamp"
-        case requiredHttpHeaders = "RequiredHttpHeaders"
-        case transcodingUrl = "TranscodingUrl"
-        case transcodingSubProtocol = "TranscodingSubProtocol"
-        case transcodingContainer = "TranscodingContainer"
-        case analyzeDurationMs = "AnalyzeDurationMs"
-        case defaultAudioStreamIndex = "DefaultAudioStreamIndex"
-        case defaultSubtitleStreamIndex = "DefaultSubtitleStreamIndex"
-        case defaultVideoStreamIndex = "DefaultVideoStreamIndex"
-    }
-}
-
-struct JellyfinMediaAttachment: Codable, Sendable {
-    let codec: String?
-    let codecTag: String?
-    let comment: String?
-    let index: Int
-    let fileName: String?
-    let mimeType: String?
-    let deliveryUrl: String?
-    
-    enum CodingKeys: String, CodingKey {
-        case codec = "Codec"
-        case codecTag = "CodecTag"
-        case comment = "Comment"
-        case index = "Index"
-        case fileName = "FileName"
-        case mimeType = "MimeType"
-        case deliveryUrl = "DeliveryUrl"
-    }
-}
 
 // Extend MoodBucket to optionally include descriptive keywords used to steer LLM
 extension MoodBucket {
