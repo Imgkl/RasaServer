@@ -470,7 +470,6 @@ final class MovieService {
 
   // MARK: - Clients API helpers
   func getClientMovies() async throws -> ClientMoviesListResponse {
-    // Fetch all movies with tags
     let movies = try await Movie.query(on: fluent.db())
       .with(\.$tags)
       .sort(\.$title)
@@ -478,7 +477,11 @@ final class MovieService {
     let total = movies.count
     let ids = movies.map { $0.jellyfinId }
     let live = try await jellyfinService.fetchItems(ids: ids)
-    let liveById = Dictionary(uniqueKeysWithValues: live.map { ($0.id, $0) })
+    let validItems = live.compactMap { item -> (String, JellyfinMovieMetadata)? in
+      guard !item.id.isEmpty else { return nil }
+      return (item.id, item)
+    }
+    let liveById: [String: JellyfinMovieMetadata] = Dictionary(uniqueKeysWithValues: validItems)
     let items = movies.map { m in buildClientMovie(from: m, liveMeta: liveById[m.jellyfinId]) }
     return ClientMoviesListResponse(movies: items, totalCount: total)
   }
@@ -563,8 +566,14 @@ final class MovieService {
     let picked = ordered.prefix(maxCount).map { $0.movie }
     if picked.isEmpty { return [] }
     let live = try await jellyfinService.fetchItems(ids: picked.map { $0.jellyfinId })
-    let liveById = Dictionary(uniqueKeysWithValues: live.map { ($0.id, $0) })
-    return picked.map { buildClientMovie(from: $0, liveMeta: liveById[$0.jellyfinId]) }
+    let validItems = live.compactMap { item -> (String, JellyfinMovieMetadata)? in
+      guard !item.id.isEmpty else { return nil }
+      return (item.id, item)
+    }
+    let liveById: [String: JellyfinMovieMetadata] = Dictionary(uniqueKeysWithValues: validItems)
+    return picked.map { movie in
+      return buildClientMovie(from: movie, liveMeta: liveById[movie.jellyfinId])
+    }
   }
 
   // MARK: - Clients Home helpers
@@ -577,7 +586,11 @@ final class MovieService {
     // Get live data for ALL movies with backdrops to check watch status
     let ids = movies.map { $0.jellyfinId }
     let live = try await jellyfinService.fetchItems(ids: ids)
-    let liveById = Dictionary(uniqueKeysWithValues: live.map { ($0.id, $0) })
+    let validItems = live.compactMap { item -> (String, JellyfinMovieMetadata)? in
+      guard !item.id.isEmpty else { return nil }
+      return (item.id, item)
+    }
+    let liveById: [String: JellyfinMovieMetadata] = Dictionary(uniqueKeysWithValues: validItems)
     // Prefer unwatched; fallback to all movies
     let unwatched = movies.filter { m in !(liveById[m.jellyfinId]?.userData?.played ?? false) }
     let pool = unwatched.isEmpty ? movies : unwatched
@@ -659,7 +672,11 @@ final class MovieService {
     // Get live data for all movies to check watch status
     let ids = movies.map { $0.jellyfinId }
     let live = try await jellyfinService.fetchItems(ids: ids)
-    let liveById = Dictionary(uniqueKeysWithValues: live.map { ($0.id, $0) })
+    let validItems = live.compactMap { item -> (String, JellyfinMovieMetadata)? in
+      guard !item.id.isEmpty else { return nil }
+      return (item.id, item)
+    }
+    let liveById: [String: JellyfinMovieMetadata] = Dictionary(uniqueKeysWithValues: validItems)
     
     // Count watched movies
     let watchedMovies = movies.filter { m in
@@ -693,8 +710,14 @@ final class MovieService {
     if movies.isEmpty { return (mood, moodTitle, []) }
     let ids = movies.map { $0.jellyfinId }
     let live = try await jellyfinService.fetchItems(ids: ids)
-    let liveById = Dictionary(uniqueKeysWithValues: live.map { ($0.id, $0) })
-    let items = movies.map { buildClientMovie(from: $0, liveMeta: liveById[$0.jellyfinId]) }
+    let validItems = live.compactMap { item -> (String, JellyfinMovieMetadata)? in
+      guard !item.id.isEmpty else { return nil }
+      return (item.id, item)
+    }
+    let liveById: [String: JellyfinMovieMetadata] = Dictionary(uniqueKeysWithValues: validItems)
+    let items = movies.map { movie in
+      return buildClientMovie(from: movie, liveMeta: liveById[movie.jellyfinId])
+    }
     // max items at 10
     return (mood, moodTitle, Array(items.prefix(10)))
   }
@@ -715,7 +738,11 @@ final class MovieService {
       .all()
     let ids = movies.map { $0.jellyfinId }
     let live = try await jellyfinService.fetchItems(ids: ids)
-    let liveById = Dictionary(uniqueKeysWithValues: live.map { ($0.id, $0) })
+    let validItems = live.compactMap { item -> (String, JellyfinMovieMetadata)? in
+      guard !item.id.isEmpty else { return nil }
+      return (item.id, item)
+    }
+    let liveById: [String: JellyfinMovieMetadata] = Dictionary(uniqueKeysWithValues: validItems)
     let items = movies.map { m in buildClientMovie(from: m, liveMeta: liveById[m.jellyfinId]) }
     return ClientMoviesListResponse(movies: items, totalCount: items.count)
   }
@@ -728,7 +755,11 @@ final class MovieService {
     // Live overlay for all movies in the response
     let ids = movies.map { $0.jellyfinId }
     let live = try await jellyfinService.fetchItems(ids: ids)
-    let liveById = Dictionary(uniqueKeysWithValues: live.map { ($0.id, $0) })
+    let validItems = live.compactMap { item -> (String, JellyfinMovieMetadata)? in
+      guard !item.id.isEmpty else { return nil }
+      return (item.id, item)
+    }
+    let liveById: [String: JellyfinMovieMetadata] = Dictionary(uniqueKeysWithValues: validItems)
     // Group by year (unknown grouped under nil)
     var groups: [Int?: [Movie]] = [:]
     for m in movies {
@@ -747,7 +778,9 @@ final class MovieService {
     var timeline: [ClientTimelineItem] = []
     for key in orderedYears {
       let bucket = (groups[key] ?? []).sorted { $0.title < $1.title }
-      let moviesOut = bucket.map { buildClientMovie(from: $0, liveMeta: liveById[$0.jellyfinId]) }
+      let moviesOut = bucket.map { movie in
+        return buildClientMovie(from: movie, liveMeta: liveById[movie.jellyfinId])
+      }
       let yearOut: ClientTimelineYear = key == nil ? .unknown : .known(key!)
       timeline.append(ClientTimelineItem(year: yearOut, movies: moviesOut))
     }
