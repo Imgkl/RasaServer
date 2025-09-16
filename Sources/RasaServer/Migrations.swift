@@ -16,6 +16,7 @@ struct CreateMovies: AsyncMigration {
             .field("cast", .array(of: .string), .required)
             .field("poster_url", .string)
             .field("backdrop_url", .string)
+            .field("logo_url", .string)
             .field("jellyfin_metadata", .json)
             .field("created_at", .datetime)
             .field("updated_at", .datetime)
