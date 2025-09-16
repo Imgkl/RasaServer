@@ -1,5 +1,5 @@
 {
-  "originHash" : "f3c9ceaac9221981bdcb8482f6bfdfe0d0586efbe1dc8cc9772b753d6188d72b",
+  "originHash" : "4e1f1d42bc36e69215b6b35f662ca8e164cd9ada03490727c5c16cdfe847bfe3",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -38,15 +38,6 @@
       }
     },
     {
-      "identity" : "get",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/kean/Get",
-      "state" : {
-        "revision" : "31249885da1052872e0ac91a2943f62567c0d96d",
-        "version" : "2.2.1"
-      }
-    },
-    {
       "identity" : "hummingbird",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/hummingbird-project/hummingbird.git",
@@ -62,15 +53,6 @@
       "state" : {
         "revision" : "45459ea5b541c6a96b87d1be848e384593b7dde3",
         "version" : "2.0.0"
-      }
-    },
-    {
-      "identity" : "jellyfin-sdk-swift",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/jellyfin/jellyfin-sdk-swift.git",
-      "state" : {
-        "revision" : "6039de827d9f768fe7218f3960426aca3325423a",
-        "version" : "0.5.2"
       }
     },
     {
@@ -287,15 +269,6 @@
       "state" : {
         "revision" : "890830fff1a577dc83134890c7984020c5f6b43b",
         "version" : "1.6.2"
-      }
-    },
-    {
-      "identity" : "urlqueryencoder",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/CreateAPI/URLQueryEncoder",
-      "state" : {
-        "revision" : "4ce950479707ea109f229d7230ec074a133b15d7",
-        "version" : "0.2.1"
       }
     },
     {

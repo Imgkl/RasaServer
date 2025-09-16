@@ -17,8 +17,6 @@ let package = Package(
         // HTTP Client for Jellyfin API
         .package(url: "https://github.com/swift-server/async-http-client.git", from: "1.21.0"),
         
-        // Jellyfin Swift SDK
-        .package(url: "https://github.com/jellyfin/jellyfin-sdk-swift.git", from: "0.5.2"),
         
         // JSON/UUID utilities
         .package(url: "https://github.com/apple/swift-collections.git", from: "1.1.0"),
@@ -49,8 +47,6 @@ let package = Package(
                 // HTTP Client
                 .product(name: "AsyncHTTPClient", package: "async-http-client"),
                 
-                // Jellyfin SDK
-                .product(name: "JellyfinAPI", package: "jellyfin-sdk-swift"),
                 
                 // Utilities
                 .product(name: "Collections", package: "swift-collections"),
