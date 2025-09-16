@@ -18,7 +18,7 @@ let package = Package(
         .package(url: "https://github.com/swift-server/async-http-client.git", from: "1.21.0"),
         
         // Jellyfin Swift SDK
-        .package(url: "https://github.com/jellyfin/jellyfin-sdk-swift.git", from: "0.4.0"),
+        .package(url: "https://github.com/jellyfin/jellyfin-sdk-swift.git", from: "0.5.2"),
         
         // JSON/UUID utilities
         .package(url: "https://github.com/apple/swift-collections.git", from: "1.1.0"),
