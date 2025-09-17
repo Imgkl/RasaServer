@@ -1,14 +1,15 @@
 import Foundation
-@preconcurrency import JellyfinAPI
 import Logging
 import AsyncHTTPClient
+import NIOCore
+import NIOHTTP1
 
 final class JellyfinService: Sendable {
-    nonisolated let client: JellyfinClient
     let httpClient: HTTPClient
     private let userId: String
     let baseURL: String
     let apiKey: String
+    private let deviceId: String
     private let logger = Logger(label: "JellyfinService")
     
     init(baseURL: String, apiKey: String, userId: String, httpClient: HTTPClient) {
@@ -16,52 +17,38 @@ final class JellyfinService: Sendable {
         self.apiKey = apiKey
         self.userId = userId
         self.httpClient = httpClient
-        
-        let config = JellyfinClient.Configuration(
-            url: URL(string: self.baseURL)!,
-            client: "Rasa",
-            deviceName: "RasaServer",
-            deviceID: "RasaServer-\(UUID().uuidString)",
-            version: "1.0.0"
-        )
-        
-        // Configure URLSession with longer timeouts for large libraries
-        let sessionConfig = URLSessionConfiguration.default
-        sessionConfig.timeoutIntervalForRequest = 60.0  // 60 seconds per request
-        sessionConfig.timeoutIntervalForResource = 300.0 // 5 minutes total
-        
-        self.client = JellyfinClient(
-            configuration: config, 
-            sessionConfiguration: sessionConfig,
-            accessToken: apiKey
-        )
+        self.deviceId = "RasaServer-\(UUID().uuidString)"
     }
-    
     
     // MARK: - Authentication (Username/Password)
     
     static func login(baseURL: String, username: String, password: String, httpClient: HTTPClient) async throws -> (token: String, userId: String) {
-        let config = JellyfinClient.Configuration(
-            url: URL(string: baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")))!,
-            client: "Rasa",
-            deviceName: "RasaServer",
-            deviceID: "RasaServer-\(UUID().uuidString)",
-            version: "1.0.0"
-        )
+        let cleanBaseURL = baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let deviceId = "RasaServer-\(UUID().uuidString)"
         
-        // Configure URLSession with longer timeouts
-        let sessionConfig = URLSessionConfiguration.default
-        sessionConfig.timeoutIntervalForRequest = 30.0  // 30 seconds for login
-        sessionConfig.timeoutIntervalForResource = 60.0  // 1 minute total
+        let loginData = [
+            "Username": username,
+            "Pw": password
+        ]
         
-        let tempClient = JellyfinClient(configuration: config, sessionConfiguration: sessionConfig)
+        let jsonData = try JSONSerialization.data(withJSONObject: loginData)
         
-        let response = try await tempClient.signIn(
-            username: username,
-            password: password
-        )
+        var request = HTTPClientRequest(url: "\(cleanBaseURL)/Users/AuthenticateByName")
+        request.method = .POST
+        request.headers.add(name: "Content-Type", value: "application/json")
+        request.headers.add(name: "Authorization", value: "MediaBrowser Client=\"Rasa\", Device=\"RasaServer\", DeviceId=\"\(deviceId)\", Version=\"1.0.0\"")
+        request.body = .bytes(ByteBuffer(data: jsonData))
         
-        return (token: response.accessToken ?? "", userId: response.user?.id ?? "")
+        let response = try await httpClient.execute(request, timeout: .seconds(30))
+        
+        guard response.status == .ok else {
+            throw JellyfinError.authenticationFailed("Login failed with status: \(response.status)")
+        }
+        
+        let responseData = try await response.body.collect(upTo: 1024 * 1024) // 1MB limit
+        let authResult = try JSONDecoder().decode(AuthenticationResult.self, from: responseData)
+        
+        return (token: authResult.accessToken ?? "", userId: authResult.user?.id ?? "")
     }
     
     // MARK: - Movies
@@ -69,84 +56,130 @@ final class JellyfinService: Sendable {
     func fetchAllMovies() async throws -> [JellyfinMovieMetadata] {
         logger.info("Fetching movies from Jellyfin")
         
-        let parameters = Paths.GetItemsParameters(
-            userID: userId,
-            isRecursive: true,
-            sortOrder: [.ascending],
-            fields: [.overview, .genres, .people, .mediaStreams, .providerIDs, .studios, .taglines],
-            includeItemTypes: [.movie],
-            sortBy: [.sortName]
-        )
+        let queryItems = [
+            "Recursive": "true",
+            "SortOrder": "Ascending",
+            "Fields": "Overview,Genres,People,MediaStreams,ProviderIds,Studios,Taglines",
+            "IncludeItemTypes": "Movie",
+            "SortBy": "SortName"
+        ]
         
-        let request = Paths.getItems(parameters: parameters)
-        let response = try await client.send(request)
-        let items = response.value.items ?? []
+        let queryString = queryItems.map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? $0.value)" }.joined(separator: "&")
+        
+        var request = HTTPClientRequest(url: "\(baseURL)/Users/\(userId)/Items?\(queryString)")
+        request.method = .GET
+        request.headers.add(name: "Authorization", value: "MediaBrowser Token=\"\(apiKey)\"")
+        
+        let response = try await httpClient.execute(request, timeout: .seconds(60))
+        
+        guard response.status == .ok else {
+            throw JellyfinError.requestFailed("Failed to fetch movies: \(response.status)")
+        }
+        
+        let responseData = try await response.body.collect(upTo: 10 * 1024 * 1024) // 10MB limit
+        let itemsResponse = try JSONDecoder().decode(JellyfinItemsResponse.self, from: responseData)
+        let items = itemsResponse.items ?? []
         
         logger.info("Fetched \(items.count) movies from Jellyfin")
         return items.map { $0.toJellyfinMovieMetadata() }
     }
 
-    /// Fetch items similar to a given item from Jellyfin (movies only)
     func getSimilarMovies(to movieId: String, limit: Int = 10) async throws -> [JellyfinMovieMetadata] {
-        let parameters = Paths.GetSimilarItemsParameters(
-            userID: userId,
-            limit: limit,
-            fields: [.overview, .genres, .people, .mediaStreams, .providerIDs, .studios]
-        )
+        let queryItems = [
+            "Limit": "\(limit)",
+            "Fields": "Overview,Genres,People,MediaStreams,ProviderIds,Studios"
+        ]
         
-        let request = Paths.getSimilarItems(itemID: movieId, parameters: parameters)
-        let response = try await client.send(request)
-        return (response.value.items ?? []).map { $0.toJellyfinMovieMetadata() }
+        let queryString = queryItems.map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? $0.value)" }.joined(separator: "&")
+        
+        var request = HTTPClientRequest(url: "\(baseURL)/Items/\(movieId)/Similar?\(queryString)")
+        request.method = .GET
+        request.headers.add(name: "Authorization", value: "MediaBrowser Token=\"\(apiKey)\"")
+        
+        let response = try await httpClient.execute(request, timeout: .seconds(30))
+        
+        guard response.status == .ok else {
+            throw JellyfinError.requestFailed("Failed to fetch similar movies: \(response.status)")
+        }
+        
+        let responseData = try await response.body.collect(upTo: 5 * 1024 * 1024) // 5MB limit
+        let itemsResponse = try JSONDecoder().decode(JellyfinItemsResponse.self, from: responseData)
+        return (itemsResponse.items ?? []).map { $0.toJellyfinMovieMetadata() }
     }
 
-    // Fetch resume/continue-watching items for the user (movies only)
     func getResumeItems(limit: Int = 10) async throws -> [JellyfinMovieMetadata] {
-        let parameters = Paths.GetResumeItemsParameters(
-            userID: userId,
-            limit: limit,
-            fields: [.overview, .genres, .people, .mediaStreams, .providerIDs, .studios],
-            includeItemTypes: [.movie]
-        )
+        let queryItems = [
+            "Limit": "\(limit)",
+            "Fields": "Overview,Genres,People,MediaStreams,ProviderIds,Studios",
+            "IncludeItemTypes": "Movie"
+        ]
         
-        let request = Paths.getResumeItems(parameters: parameters)
-        let response = try await client.send(request)
-        return (response.value.items ?? []).map { $0.toJellyfinMovieMetadata() }
+        let queryString = queryItems.map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? $0.value)" }.joined(separator: "&")
+        
+        var request = HTTPClientRequest(url: "\(baseURL)/Users/\(userId)/Items/Resume?\(queryString)")
+        request.method = .GET
+        request.headers.add(name: "Authorization", value: "MediaBrowser Token=\"\(apiKey)\"")
+        
+        let response = try await httpClient.execute(request, timeout: .seconds(30))
+        
+        guard response.status == .ok else {
+            throw JellyfinError.requestFailed("Failed to fetch resume items: \(response.status)")
+        }
+        
+        let responseData = try await response.body.collect(upTo: 5 * 1024 * 1024) // 5MB limit
+        let itemsResponse = try JSONDecoder().decode(JellyfinItemsResponse.self, from: responseData)
+        return (itemsResponse.items ?? []).map { $0.toJellyfinMovieMetadata() }
     }
 
-
-    /// Fetch recently added movies for the user, sorted by DateCreated desc
     func getRecentlyAddedMovies(limit: Int = 20) async throws -> [JellyfinMovieMetadata] {
-        let parameters = Paths.GetItemsParameters(
-            userID: userId,
-            limit: limit,
-            isRecursive: true,
-            sortOrder: [.descending],
-            fields: [.overview, .genres, .people, .mediaStreams, .providerIDs, .studios],
-            includeItemTypes: [.movie],
-            sortBy: [.dateCreated]
-        )
+        let queryItems = [
+            "Limit": "\(limit)",
+            "Recursive": "true",
+            "SortOrder": "Descending",
+            "Fields": "Overview,Genres,People,MediaStreams,ProviderIds,Studios",
+            "IncludeItemTypes": "Movie",
+            "SortBy": "DateCreated"
+        ]
         
-        let request = Paths.getItems(parameters: parameters)
-        let response = try await client.send(request)
-        return (response.value.items ?? []).map { $0.toJellyfinMovieMetadata() }
+        let queryString = queryItems.map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? $0.value)" }.joined(separator: "&")
+        
+        var request = HTTPClientRequest(url: "\(baseURL)/Users/\(userId)/Items?\(queryString)")
+        request.method = .GET
+        request.headers.add(name: "Authorization", value: "MediaBrowser Token=\"\(apiKey)\"")
+        
+        let response = try await httpClient.execute(request, timeout: .seconds(30))
+        
+        guard response.status == .ok else {
+            throw JellyfinError.requestFailed("Failed to fetch recently added movies: \(response.status)")
+        }
+        
+        let responseData = try await response.body.collect(upTo: 5 * 1024 * 1024) // 5MB limit
+        let itemsResponse = try JSONDecoder().decode(JellyfinItemsResponse.self, from: responseData)
+        return (itemsResponse.items ?? []).map { $0.toJellyfinMovieMetadata() }
     }
     
     func fetchMovie(id: String) async throws -> BaseItemDto {
-        let request = Paths.getItem(itemID: id, userID: userId)
-        let response = try await client.send(request)
-        return response.value
+        var request = HTTPClientRequest(url: "\(baseURL)/Users/\(userId)/Items/\(id)")
+        request.method = .GET
+        request.headers.add(name: "Authorization", value: "MediaBrowser Token=\"\(apiKey)\"")
+        
+        let response = try await httpClient.execute(request, timeout: .seconds(30))
+        
+        guard response.status == .ok else {
+            throw JellyfinError.requestFailed("Failed to fetch movie: \(response.status)")
+        }
+        
+        let responseData = try await response.body.collect(upTo: 1024 * 1024) // 1MB limit
+        return try JSONDecoder().decode(BaseItemDto.self, from: responseData)
     }
     
     // MARK: - Images
     
-    /// Get image URL only if the image exists in BaseItemDto
-    func getImageUrl(for item: BaseItemDto, imageType: JellyfinAPI.ImageType, quality: Int = 85) -> String? {
-        // Log what imageTags are available
+    func getImageUrl(for item: BaseItemDto, imageType: ImageType, quality: Int = 85) -> String? {
         let availableTags = item.imageTags?.keys.joined(separator: ", ") ?? "none"
         let backdropCount = item.backdropImageTags?.count ?? 0
         logger.info("Checking \(imageType.rawValue) image for \(item.name ?? "unknown"). Available imageTags: \(availableTags), Backdrop count: \(backdropCount)")
         
-        // Special handling for backdrop images - they use BackdropImageTags array
         if imageType == .backdrop {
             guard let backdropTags = item.backdropImageTags,
                   !backdropTags.isEmpty else {
@@ -154,13 +187,11 @@ final class JellyfinService: Sendable {
                 return nil
             }
             
-            // Use the first backdrop image (index 0)
             let url = "\(baseURL)/Items/\(item.id ?? "")/Images/Backdrop/0?quality=\(quality)&api_key=\(apiKey)"
             logger.info("Generated backdrop URL for \(item.name ?? "unknown"): \(url)")
             return url
         }
         
-        // Check if the image exists using imageTags from SDK for other image types
         guard let imageTags = item.imageTags,
               imageTags[imageType.rawValue] != nil else {
             logger.info("No \(imageType.rawValue) image found for \(item.name ?? "unknown")")
@@ -172,13 +203,8 @@ final class JellyfinService: Sendable {
         return url
     }
     
+    // MARK: - Streaming URLs
     
-    
-
-    
-    // MARK: - Playback
-    
-    /// Get direct stream URL with all streaming parameters (no transcoding)
     func getStreamUrl(itemId: String, playSessionId: String, startPositionTicks: Int64? = nil, audioStreamIndex: Int? = nil, subtitleStreamIndex: Int? = nil) -> String {
         var components = URLComponents(string: "\(baseURL)/Videos/\(itemId)/stream")!
         
@@ -210,9 +236,10 @@ final class JellyfinService: Sendable {
     
     
     
-    // MARK: - Playback Progress
+    // MARK: - Playback Reporting
+    
     func reportPlaybackStart(itemId: String, playSessionId: String, positionMs: Int?, playMethod: String?, audioStreamIndex: Int?, subtitleStreamIndex: Int?) async throws {
-        let positionTicks: Int? = positionMs.map { $0 * 10_000_000 }
+        let positionTicks: Int64? = positionMs.map { Int64($0 * 10_000_000) }
         let playMethodEnum: PlayMethod? = playMethod.flatMap { PlayMethod(rawValue: $0) }
         
         let startInfo = PlaybackStartInfo(
@@ -227,8 +254,19 @@ final class JellyfinService: Sendable {
             subtitleStreamIndex: subtitleStreamIndex
         )
         
-        let request = Paths.reportPlaybackStart(startInfo)
-        _ = try await client.send(request)
+        let jsonData = try JSONEncoder().encode(startInfo)
+        
+        var request = HTTPClientRequest(url: "\(baseURL)/Sessions/Playing/Start")
+        request.method = .POST
+        request.headers.add(name: "Content-Type", value: "application/json")
+        request.headers.add(name: "Authorization", value: "MediaBrowser Token=\"\(apiKey)\"")
+        request.body = .bytes(ByteBuffer(data: jsonData))
+        
+        let response = try await httpClient.execute(request, timeout: .seconds(30))
+        
+        guard response.status == .noContent || response.status == .ok else {
+            throw JellyfinError.requestFailed("Failed to report playback start: \(response.status)")
+        }
     }
 
     func reportPlaybackProgress(itemId: String, playSessionId: String, positionMs: Int, isPaused: Bool?) async throws {
@@ -239,12 +277,23 @@ final class JellyfinService: Sendable {
             itemID: itemId,
             mediaSourceID: itemId,
             playSessionID: playSessionId,
-            positionTicks: positionTicks,
+            positionTicks: Int64(positionTicks),
             sessionID: playSessionId
         )
         
-        let request = Paths.reportPlaybackProgress(progressInfo)
-        _ = try await client.send(request)
+        let jsonData = try JSONEncoder().encode(progressInfo)
+        
+        var request = HTTPClientRequest(url: "\(baseURL)/Sessions/Playing/Progress")
+        request.method = .POST
+        request.headers.add(name: "Content-Type", value: "application/json")
+        request.headers.add(name: "Authorization", value: "MediaBrowser Token=\"\(apiKey)\"")
+        request.body = .bytes(ByteBuffer(data: jsonData))
+        
+        let response = try await httpClient.execute(request, timeout: .seconds(30))
+        
+        guard response.status == .noContent || response.status == .ok else {
+            throw JellyfinError.requestFailed("Failed to report playback progress: \(response.status)")
+        }
     }
 
     func reportPlaybackStopped(itemId: String, playSessionId: String, positionMs: Int?) async throws {
@@ -254,26 +303,51 @@ final class JellyfinService: Sendable {
             itemID: itemId,
             mediaSourceID: itemId,
             playSessionID: playSessionId,
-            positionTicks: positionTicks,
+            positionTicks: positionTicks.map { Int64($0) },
             sessionID: playSessionId
         )
         
-        let request = Paths.reportPlaybackStopped(stopInfo)
-        _ = try await client.send(request)
+        let jsonData = try JSONEncoder().encode(stopInfo)
+        
+        var request = HTTPClientRequest(url: "\(baseURL)/Sessions/Playing/Stopped")
+        request.method = .POST
+        request.headers.add(name: "Content-Type", value: "application/json")
+        request.headers.add(name: "Authorization", value: "MediaBrowser Token=\"\(apiKey)\"")
+        request.body = .bytes(ByteBuffer(data: jsonData))
+        
+        let response = try await httpClient.execute(request, timeout: .seconds(30))
+        
+        guard response.status == .noContent || response.status == .ok else {
+            throw JellyfinError.requestFailed("Failed to report playback stopped: \(response.status)")
+        }
     }
 
     // MARK: - Watched State
     func markItemPlayed(itemId: String) async throws {
-        let request = Paths.markPlayedItem(itemID: itemId, userID: userId)
-        _ = try await client.send(request)
+        var request = HTTPClientRequest(url: "\(baseURL)/Users/\(userId)/PlayedItems/\(itemId)")
+        request.method = .POST
+        request.headers.add(name: "Authorization", value: "MediaBrowser Token=\"\(apiKey)\"")
+        
+        let response = try await httpClient.execute(request, timeout: .seconds(30))
+        
+        guard response.status == .ok || response.status == .noContent else {
+            throw JellyfinError.requestFailed("Failed to mark item played: \(response.status)")
+        }
     }
 
     func markItemUnplayed(itemId: String) async throws {
-        let request = Paths.markUnplayedItem(itemID: itemId, userID: userId)
-        _ = try await client.send(request)
+        var request = HTTPClientRequest(url: "\(baseURL)/Users/\(userId)/PlayedItems/\(itemId)")
+        request.method = .DELETE
+        request.headers.add(name: "Authorization", value: "MediaBrowser Token=\"\(apiKey)\"")
+        
+        let response = try await httpClient.execute(request, timeout: .seconds(30))
+        
+        guard response.status == .ok || response.status == .noContent else {
+            throw JellyfinError.requestFailed("Failed to mark item unplayed: \(response.status)")
+        }
     }
 
-    // MARK: - Bulk item fetch (UserData + RunTimeTicks)
+    // MARK: - Bulk item fetch
     func fetchItems(ids: [String]) async throws -> [JellyfinMovieMetadata] {
         guard !ids.isEmpty else { return [] }
         let chunks = ids.chunked(into: 80)
@@ -281,14 +355,26 @@ final class JellyfinService: Sendable {
         aggregated.reserveCapacity(ids.count)
 
         for c in chunks {
-            let parameters = Paths.GetItemsParameters(
-                userID: userId,
-                ids: c
-            )
+            let idsParam = c.joined(separator: ",")
+            let queryItems = [
+                "Ids": idsParam
+            ]
             
-            let request = Paths.getItems(parameters: parameters)
-            let response = try await client.send(request)
-            aggregated.append(contentsOf: response.value.items ?? [])
+            let queryString = queryItems.map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? $0.value)" }.joined(separator: "&")
+            
+            var request = HTTPClientRequest(url: "\(baseURL)/Users/\(userId)/Items?\(queryString)")
+            request.method = .GET
+            request.headers.add(name: "Authorization", value: "MediaBrowser Token=\"\(apiKey)\"")
+            
+            let response = try await httpClient.execute(request, timeout: .seconds(30))
+            
+            guard response.status == .ok else {
+                throw JellyfinError.requestFailed("Failed to fetch items: \(response.status)")
+            }
+            
+            let responseData = try await response.body.collect(upTo: 5 * 1024 * 1024) // 5MB limit
+            let itemsResponse = try JSONDecoder().decode(JellyfinItemsResponse.self, from: responseData)
+            aggregated.append(contentsOf: itemsResponse.items ?? [])
         }
         return aggregated.map { $0.toJellyfinMovieMetadata() }
     }
@@ -305,54 +391,32 @@ final class JellyfinService: Sendable {
         let response = try await httpClient.execute(request, timeout: .seconds(10))
         
         guard response.status == .ok else {
-            throw JellyfinError.httpError(response.status.code, "Failed to fetch server info")
+            throw JellyfinError.requestFailed("Failed to fetch server info: \(response.status)")
         }
         
         let data = try await response.body.collect(upTo: 1024 * 1024)
         return try JSONDecoder().decode(JellyfinServerInfo.self, from: data)
     }
     
-    // MARK: - Authentication Test
-    
     func testConnection() async throws -> Bool {
         let url = "\(baseURL)/Users/\(userId)"
         
         var request = HTTPClientRequest(url: url)
         request.method = .GET
-        request.headers.add(name: "X-MediaBrowser-Token", value: apiKey)
-        request.headers.add(name: "Accept", value: "application/json")
+        request.headers.add(name: "Authorization", value: "MediaBrowser Token=\"\(apiKey)\"")
         
         let response = try await httpClient.execute(request, timeout: .seconds(10))
-        
         return response.status == .ok
     }
 }
 
-private extension Array {
+// MARK: - Extensions
+
+extension Array {
     func chunked(into size: Int) -> [[Element]] {
-        guard size > 0 else { return [self] }
-        var result: [[Element]] = []
-        var idx = startIndex
-        while idx < endIndex {
-            let end = index(idx, offsetBy: size, limitedBy: endIndex) ?? endIndex
-            result.append(Array(self[idx..<end]))
-            idx = end
+        return stride(from: 0, to: count, by: size).map {
+            Array(self[$0..<Swift.min($0 + size, count)])
         }
-        return result
-    }
-}
-
-// MARK: - Response Types
-
-struct JellyfinItemsResponse: Codable, Sendable {
-    let items: [JellyfinMovieMetadata]
-    let totalRecordCount: Int
-    let startIndex: Int
-
-    enum CodingKeys: String, CodingKey {
-        case items = "Items"
-        case totalRecordCount = "TotalRecordCount"
-        case startIndex = "StartIndex"
     }
 }
 
@@ -376,36 +440,6 @@ struct JellyfinServerInfo: Codable, Sendable {
     }
 }
 
-// MARK: - Errors
-
-enum JellyfinError: Error, CustomStringConvertible {
-    case httpError(UInt, String)
-    case invalidResponse
-    case authenticationFailed
-    case noMediaSource
-    case movieNotFound(String)
-    case connectionFailed
-    
-    var description: String {
-        switch self {
-        case .httpError(let code, let message):
-            return "Jellyfin HTTP Error (\(code)): \(message)"
-        case .invalidResponse:
-            return "Invalid response from Jellyfin server"
-        case .authenticationFailed:
-            return "Authentication failed with Jellyfin server"
-        case .noMediaSource:
-            return "No media source available for playback"
-        case .movieNotFound(let id):
-            return "Movie not found: \(id)"
-        case .connectionFailed:
-            return "Failed to connect to Jellyfin server"
-        }
-    }
-}
-
-// MARK: - Extensions
-
 extension BaseItemDto {
     func toJellyfinMovieMetadata() -> JellyfinMovieMetadata {
         JellyfinMovieMetadata(
@@ -414,20 +448,20 @@ extension BaseItemDto {
             originalTitle: originalTitle,
             overview: overview,
             productionYear: productionYear,
-            runTimeTicks: runTimeTicks.map { Int64($0) },
+            runTimeTicks: runTimeTicks,
             genres: genres ?? [],
             people: (people ?? []).map { person in
                 JellyfinPerson(
                     name: person.name ?? "",
                     id: person.id ?? "",
                     role: person.role,
-                    type: person.type?.rawValue ?? ""
+                    type: person.type ?? ""
                 )
             },
-            mediaStreams: (mediaSources?.first?.mediaStreams ?? []).map { stream in
+            mediaStreams: (mediaStreams ?? []).map { stream in
                 JellyfinMediaStream(
                     codec: stream.codec,
-                    type: stream.type?.rawValue ?? "",
+                    type: stream.type ?? "",
                     index: stream.index ?? 0,
                     title: stream.title,
                     language: stream.language,
@@ -435,31 +469,21 @@ extension BaseItemDto {
                     isDefault: stream.isDefault ?? false
                 )
             },
-            providerIds: providerIDs,
+            providerIds: providerIds,
             studios: (studios ?? []).map { studio in
                 JellyfinStudio(id: studio.id ?? "", name: studio.name ?? "")
             },
             imageBlurHashes: nil,
-            userData: userData.map { data in
+            userData: userData.map { userData in
                 JellyfinUserData(
-                    played: (data.playCount ?? 0) > 0,
-                    playbackPositionTicks: Int64(data.playbackPositionTicks ?? 0),
-                    playCount: data.playCount ?? 0,
-                    isFavorite: data.isFavorite ?? false,
-                    lastPlayedDate: nil
+                    played: userData.played ?? false,
+                    playbackPositionTicks: userData.playbackPositionTicks ?? 0,
+                    playCount: userData.playCount ?? 0,
+                    isFavorite: userData.isFavorite ?? false,
+                    lastPlayedDate: userData.lastPlayedDate
                 )
             }
         )
-    }
-    
-    /// Get image URL only if the image exists
-    func getImageUrl(baseURL: String, apiKey: String, imageType: JellyfinAPI.ImageType, quality: Int = 85) -> String? {
-        guard let imageTags = imageTags,
-              imageTags[imageType.rawValue] != nil else {
-            return nil
-        }
-        
-        return "\(baseURL)/Items/\(id ?? "")/Images/\(imageType.rawValue)?quality=\(quality)&api_key=\(apiKey)"
     }
     
     func toMovie() -> Movie {
@@ -470,10 +494,13 @@ extension BaseItemDto {
             originalTitle: originalTitle,
             year: productionYear,
             overview: overview,
-            runtimeMinutes: metadata.runtimeMinutes,
+            runtimeMinutes: runTimeTicks.map { Int($0 / 600_000_000) },
             genres: genres ?? [],
-            director: metadata.director,
-            cast: metadata.cast,
+            director: people?.first(where: { $0.type == "Director" })?.name,
+            cast: people?.filter { $0.type == "Actor" }.compactMap { $0.name } ?? [],
+            posterUrl: nil,
+            backdropUrl: nil,
+            logoUrl: nil,
             jellyfinMetadata: metadata
         )
     }
@@ -487,31 +514,18 @@ extension JellyfinMovieMetadata {
             originalTitle: originalTitle,
             year: productionYear,
             overview: overview,
-            runtimeMinutes: runtimeMinutes,
+            runtimeMinutes: runTimeTicks.map { Int($0 / 600_000_000) },
             genres: genres,
-            director: director,
-            cast: cast,
+            director: people.first(where: { $0.type == "Director" })?.name,
+            cast: people.filter { $0.type == "Actor" }.map { $0.name },
+            posterUrl: nil,
+            backdropUrl: nil,
+            logoUrl: nil,
             jellyfinMetadata: self
         )
     }
-}
-
-// MARK: - Auth Response Types
-
-struct JellyfinAuthResponse: Codable, Sendable {
-    let accessToken: String
-    let user: JellyfinAuthUser
-
-    enum CodingKeys: String, CodingKey {
-        case accessToken = "AccessToken"
-        case user = "User"
-    }
-}
-
-struct JellyfinAuthUser: Codable, Sendable {
-    let id: String
-
-    enum CodingKeys: String, CodingKey {
-        case id = "Id"
+    
+    func getImageUrl(baseURL: String, apiKey: String, imageType: ImageType, quality: Int = 85) -> String? {
+        return "\(baseURL)/Items/\(id)/Images/\(imageType.rawValue)?quality=\(quality)&api_key=\(apiKey)"
     }
 }
