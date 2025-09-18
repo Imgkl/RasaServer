@@ -116,6 +116,7 @@ func setupDatabase(path: String, logger: Logger) throws -> Fluent {
 func runMigrations(fluent: Fluent, logger: Logger) async throws {
     // Add migrations
     await fluent.migrations.add(CreateMovies())
+    await fluent.migrations.add(AddTrailerDeeplinkToMovies())
     await fluent.migrations.add(CreateTags())
     await fluent.migrations.add(CreateMovieTags())
     await fluent.migrations.add(SeedMoodTags())

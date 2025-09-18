@@ -46,6 +46,9 @@ final class Movie: Model, @unchecked Sendable {
     @Field(key: "logo_url")
     var logoUrl: String?
     
+    @Field(key: "trailer_deeplink")
+    var trailerDeepLink: String?
+    
     @Field(key: "jellyfin_metadata")
     var jellyfinMetadata: JellyfinMovieMetadata?
     
@@ -74,6 +77,7 @@ final class Movie: Model, @unchecked Sendable {
         posterUrl: String? = nil,
         backdropUrl: String? = nil,
         logoUrl: String? = nil,
+        trailerDeepLink: String? = nil,
         jellyfinMetadata: JellyfinMovieMetadata? = nil
     ) {
         self.id = id
@@ -89,6 +93,7 @@ final class Movie: Model, @unchecked Sendable {
         self.posterUrl = posterUrl
         self.backdropUrl = backdropUrl
         self.logoUrl = logoUrl
+        self.trailerDeepLink = trailerDeepLink
         self.jellyfinMetadata = jellyfinMetadata
     }
 }
@@ -184,6 +189,7 @@ struct JellyfinMovieMetadata: Codable, Sendable {
     let studios: [JellyfinStudio]?
     let imageBlurHashes: [String: [String: String]]?
     let userData: JellyfinUserData?
+    let remoteTrailers: [MediaUrl]?
 
     enum CodingKeys: String, CodingKey {
         case id = "Id"
@@ -199,6 +205,7 @@ struct JellyfinMovieMetadata: Codable, Sendable {
         case studios = "Studios"
         case imageBlurHashes = "ImageBlurHashes"
         case userData = "UserData"
+        case remoteTrailers = "RemoteTrailers"
     }
 
     init(
@@ -214,7 +221,8 @@ struct JellyfinMovieMetadata: Codable, Sendable {
         providerIds: [String: String]?,
         studios: [JellyfinStudio]?,
         imageBlurHashes: [String: [String: String]]?,
-        userData: JellyfinUserData?
+        userData: JellyfinUserData?,
+        remoteTrailers: [MediaUrl]?
     ) {
         self.id = id
         self.name = name
@@ -229,6 +237,7 @@ struct JellyfinMovieMetadata: Codable, Sendable {
         self.studios = studios
         self.imageBlurHashes = imageBlurHashes
         self.userData = userData
+        self.remoteTrailers = remoteTrailers
     }
 
     init(from decoder: Decoder) throws {
@@ -246,6 +255,7 @@ struct JellyfinMovieMetadata: Codable, Sendable {
         self.studios = try c.decodeIfPresent([JellyfinStudio].self, forKey: .studios)
         self.imageBlurHashes = try c.decodeIfPresent([String: [String: String]].self, forKey: .imageBlurHashes)
         self.userData = try c.decodeIfPresent(JellyfinUserData.self, forKey: .userData)
+        self.remoteTrailers = try c.decodeIfPresent([MediaUrl].self, forKey: .remoteTrailers)
     }
     
     var runtimeMinutes: Int? {
@@ -386,6 +396,7 @@ struct ClientMovieResponse: Codable, Sendable {
     let isWatched: Bool
     let progressMs: Int?
     let progressPercent: Float?
+    let trailerUrl: String?
 }
 
 struct ClientImages: Codable, Sendable {

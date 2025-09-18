@@ -375,6 +375,11 @@ struct MediaSourceInfo: Codable, Sendable {
 struct MediaUrl: Codable, Sendable {
     let url: String?
     let name: String?
+
+    enum CodingKeys: String, CodingKey {
+        case url = "Url"
+        case name = "Name"
+    }
 }
 
 struct BaseItemPerson: Codable, Sendable {

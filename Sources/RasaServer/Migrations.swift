@@ -23,9 +23,22 @@ struct CreateMovies: AsyncMigration {
             .unique(on: "jellyfin_id")
             .create()
     }
-    
     func revert(on database: Database) async throws {
         try await database.schema("movies").delete()
+    }
+}
+
+// Add trailer_deeplink column to movies
+struct AddTrailerDeeplinkToMovies: AsyncMigration {
+    func prepare(on database: Database) async throws {
+        try await database.schema("movies")
+            .field("trailer_deeplink", .string)
+            .update()
+    }
+    func revert(on database: Database) async throws {
+        try await database.schema("movies")
+            .deleteField("trailer_deeplink")
+            .update()
     }
 }
 

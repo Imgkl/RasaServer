@@ -807,6 +807,9 @@ final class MovieService {
       return min(100, max(0, (Float(p) / Float(t)) * 100))
     }()
 
+    // Use stored deeplink computed at sync time
+    let trailerUrl: String? = movie.trailerDeepLink
+
     return ClientMovieResponse(
       id: movie.id,
       jellyfinId: movie.jellyfinId,
@@ -820,8 +823,33 @@ final class MovieService {
       imdbId: imdbId,
       isWatched: effectiveMeta?.userData?.played ?? false,
       progressMs: progressMs,
-      progressPercent: progressPercent
+      progressPercent: progressPercent,
+      trailerUrl: trailerUrl
     )
+  }
+
+  // Compute YouTube deeplink from a list of Jellyfin MediaUrl
+  private func youtubeDeepLink(from trailers: [MediaUrl]?) -> String? {
+    guard let trailers = trailers, !trailers.isEmpty else { return nil }
+    let urls = trailers.compactMap { $0.url }
+    guard let yt = urls.first(where: { u in
+      let s = u.lowercased()
+      return s.contains("youtube.com") || s.contains("youtu.be")
+    }) else { return nil }
+    guard let comps = URLComponents(string: yt), let host = comps.host?.lowercased() else { return nil }
+    var videoId: String?
+    if host.contains("youtu.be") {
+      let p = comps.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+      if !p.isEmpty { videoId = p }
+    } else if host.contains("youtube.com") {
+      if comps.path.hasPrefix("/watch") {
+        videoId = comps.queryItems?.first(where: { $0.name == "v" })?.value
+      } else if comps.path.hasPrefix("/embed/") || comps.path.hasPrefix("/shorts/") {
+        videoId = comps.path.split(separator: "/").last.map(String.init)
+      }
+    }
+    if let id = videoId, !id.isEmpty { return "youtube://watch/\(id)" }
+    return nil
   }
 
   func runtimeString(from minutes: Int?) -> String? {
@@ -981,8 +1009,26 @@ final class MovieService {
               existing.logoUrl = jellyfinService.getImageUrl(for: baseItem, imageType: .logo, quality: 85)
               logger.info("Image URLs - Poster: \(existing.posterUrl ?? "nil"), Backdrop: \(existing.backdropUrl ?? "nil"), Logo: \(existing.logoUrl ?? "nil")")
             }
-            
-            existing.jellyfinMetadata = jellyfinMovie
+            // Compute trailer deeplink and strip raw remote trailer URLs from stored metadata
+            let deeplink = youtubeDeepLink(from: jellyfinMovie.remoteTrailers)
+            existing.trailerDeepLink = deeplink
+            let strippedMeta = JellyfinMovieMetadata(
+              id: jellyfinMovie.id,
+              name: jellyfinMovie.name,
+              originalTitle: jellyfinMovie.originalTitle,
+              overview: jellyfinMovie.overview,
+              productionYear: jellyfinMovie.productionYear,
+              runTimeTicks: jellyfinMovie.runTimeTicks,
+              genres: jellyfinMovie.genres,
+              people: jellyfinMovie.people,
+              mediaStreams: jellyfinMovie.mediaStreams,
+              providerIds: jellyfinMovie.providerIds,
+              studios: jellyfinMovie.studios,
+              imageBlurHashes: jellyfinMovie.imageBlurHashes,
+              userData: jellyfinMovie.userData,
+              remoteTrailers: nil
+            )
+            existing.jellyfinMetadata = strippedMeta
 
             try await existing.save(on: fluent.db())
             stats.moviesUpdated += 1
@@ -999,7 +1045,25 @@ final class MovieService {
               movie.logoUrl = jellyfinService.getImageUrl(for: baseItem, imageType: .logo, quality: 85)
               logger.info("Image URLs - Poster: \(movie.posterUrl ?? "nil"), Backdrop: \(movie.backdropUrl ?? "nil"), Logo: \(movie.logoUrl ?? "nil")")
             }
-
+            // Compute trailer deeplink and strip raw remote trailer URLs from stored metadata
+            movie.trailerDeepLink = youtubeDeepLink(from: jellyfinMovie.remoteTrailers)
+            let strippedMeta = JellyfinMovieMetadata(
+              id: jellyfinMovie.id,
+              name: jellyfinMovie.name,
+              originalTitle: jellyfinMovie.originalTitle,
+              overview: jellyfinMovie.overview,
+              productionYear: jellyfinMovie.productionYear,
+              runTimeTicks: jellyfinMovie.runTimeTicks,
+              genres: jellyfinMovie.genres,
+              people: jellyfinMovie.people,
+              mediaStreams: jellyfinMovie.mediaStreams,
+              providerIds: jellyfinMovie.providerIds,
+              studios: jellyfinMovie.studios,
+              imageBlurHashes: jellyfinMovie.imageBlurHashes,
+              userData: jellyfinMovie.userData,
+              remoteTrailers: nil
+            )
+            movie.jellyfinMetadata = strippedMeta
             try await movie.save(on: fluent.db())
             stats.moviesUpdated += 1
             // Publish progress after each creation

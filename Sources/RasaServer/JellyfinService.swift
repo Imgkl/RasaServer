@@ -59,7 +59,7 @@ final class JellyfinService: Sendable {
         let queryItems = [
             "Recursive": "true",
             "SortOrder": "Ascending",
-            "Fields": "Overview,Genres,People,MediaStreams,ProviderIds,Studios,Taglines",
+            "Fields": "Overview,Genres,People,MediaStreams,ProviderIds,Studios,Taglines,RemoteTrailers",
             "IncludeItemTypes": "Movie",
             "SortBy": "SortName"
         ]
@@ -87,7 +87,7 @@ final class JellyfinService: Sendable {
     func getSimilarMovies(to movieId: String, limit: Int = 10) async throws -> [JellyfinMovieMetadata] {
         let queryItems = [
             "Limit": "\(limit)",
-            "Fields": "Overview,Genres,People,MediaStreams,ProviderIds,Studios"
+            "Fields": "UserData,RunTimeTicks"
         ]
         
         let queryString = queryItems.map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? $0.value)" }.joined(separator: "&")
@@ -110,7 +110,7 @@ final class JellyfinService: Sendable {
     func getResumeItems(limit: Int = 10) async throws -> [JellyfinMovieMetadata] {
         let queryItems = [
             "Limit": "\(limit)",
-            "Fields": "Overview,Genres,People,MediaStreams,ProviderIds,Studios",
+            "Fields": "UserData,RunTimeTicks",
             "IncludeItemTypes": "Movie"
         ]
         
@@ -136,7 +136,7 @@ final class JellyfinService: Sendable {
             "Limit": "\(limit)",
             "Recursive": "true",
             "SortOrder": "Descending",
-            "Fields": "Overview,Genres,People,MediaStreams,ProviderIds,Studios",
+            "Fields": "UserData,RunTimeTicks",
             "IncludeItemTypes": "Movie",
             "SortBy": "DateCreated"
         ]
@@ -159,7 +159,7 @@ final class JellyfinService: Sendable {
     }
     
     func fetchMovie(id: String) async throws -> BaseItemDto {
-        var request = HTTPClientRequest(url: "\(baseURL)/Users/\(userId)/Items/\(id)")
+        var request = HTTPClientRequest(url: "\(baseURL)/Users/\(userId)/Items/\(id)?Fields=Overview,MediaStreams,ProviderIds,RemoteTrailers")
         request.method = .GET
         request.headers.add(name: "Authorization", value: "MediaBrowser Token=\"\(apiKey)\"")
         
@@ -357,7 +357,8 @@ final class JellyfinService: Sendable {
         for c in chunks {
             let idsParam = c.joined(separator: ",")
             let queryItems = [
-                "Ids": idsParam
+                "Ids": idsParam,
+                "Fields": "UserData,RunTimeTicks"
             ]
             
             let queryString = queryItems.map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? $0.value)" }.joined(separator: "&")
@@ -482,7 +483,8 @@ extension BaseItemDto {
                     isFavorite: userData.isFavorite ?? false,
                     lastPlayedDate: userData.lastPlayedDate
                 )
-            }
+            },
+            remoteTrailers: remoteTrailers
         )
     }
     
