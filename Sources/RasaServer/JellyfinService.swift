@@ -206,13 +206,13 @@ final class JellyfinService: Sendable {
     // MARK: - People Images
     /// Build a person's primary image URL from id + primaryImageTag.
     /// Returns nil if tag is missing.
-    func getPersonImageUrl(personId: String?, primaryImageTag: String?, quality: Int = 85) -> String? {
+    func getPersonImageUrl(personId: String?, primaryImageTag: String?, quality: Int = 100) -> String? {
         guard let pid = personId, let tag = primaryImageTag, !pid.isEmpty, !tag.isEmpty else { return nil }
         return "\(baseURL)/Items/\(pid)/Images/Primary?quality=\(quality)&tag=\(tag)&api_key=\(apiKey)"
     }
 
     /// Build ordered list of candidate URLs for a person's image, for robust fallback.
-    func buildPersonImageCandidates(personId: String?, personName: String?, primaryImageTag: String?, quality: Int = 85) -> [String] {
+    func buildPersonImageCandidates(personId: String?, personName: String?, primaryImageTag: String?, quality: Int = 100) -> [String] {
         var urls: [String] = []
         if let pid = personId, let tag = primaryImageTag, !pid.isEmpty, !tag.isEmpty {
             urls.append("\(baseURL)/Items/\(pid)/Images/Primary?quality=\(quality)&tag=\(tag)&api_key=\(apiKey)")
