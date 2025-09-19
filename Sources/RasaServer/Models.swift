@@ -277,12 +277,14 @@ struct JellyfinPerson: Codable, Sendable {
     let id: String
     let role: String?
     let type: String
+    let primaryImageTag: String?
 
     enum CodingKeys: String, CodingKey {
         case name = "Name"
         case id = "Id"
         case role = "Role"
         case type = "Type"
+        case primaryImageTag = "PrimaryImageTag"
     }
 }
 
@@ -403,6 +405,19 @@ struct ClientImages: Codable, Sendable {
     let poster: String?
     let backdrop: String?
     let titleLogo: String?
+}
+
+// MARK: - Cast/People DTOs
+struct PersonResponse: Codable, Sendable {
+    let id: String
+    let name: String
+    let role: String?
+    let type: String
+    let imageUrl: String?
+}
+
+struct CastResponse: Codable, Sendable {
+    let people: [PersonResponse]
 }
 
 

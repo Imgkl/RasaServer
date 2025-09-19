@@ -159,7 +159,7 @@ final class JellyfinService: Sendable {
     }
     
     func fetchMovie(id: String) async throws -> BaseItemDto {
-        var request = HTTPClientRequest(url: "\(baseURL)/Users/\(userId)/Items/\(id)?Fields=Overview,MediaStreams,ProviderIds,RemoteTrailers")
+        var request = HTTPClientRequest(url: "\(baseURL)/Users/\(userId)/Items/\(id)?Fields=Overview,People,MediaStreams,ProviderIds,RemoteTrailers")
         request.method = .GET
         request.headers.add(name: "Authorization", value: "MediaBrowser Token=\"\(apiKey)\"")
         
@@ -201,6 +201,31 @@ final class JellyfinService: Sendable {
         let url = "\(baseURL)/Items/\(item.id ?? "")/Images/\(imageType.rawValue)?quality=\(quality)&api_key=\(apiKey)"
         logger.info("Generated \(imageType.rawValue) URL for \(item.name ?? "unknown"): \(url)")
         return url
+    }
+    
+    // MARK: - People Images
+    /// Build a person's primary image URL from id + primaryImageTag.
+    /// Returns nil if tag is missing.
+    func getPersonImageUrl(personId: String?, primaryImageTag: String?, quality: Int = 85) -> String? {
+        guard let pid = personId, let tag = primaryImageTag, !pid.isEmpty, !tag.isEmpty else { return nil }
+        return "\(baseURL)/Items/\(pid)/Images/Primary?quality=\(quality)&tag=\(tag)&api_key=\(apiKey)"
+    }
+
+    /// Build ordered list of candidate URLs for a person's image, for robust fallback.
+    func buildPersonImageCandidates(personId: String?, personName: String?, primaryImageTag: String?, quality: Int = 85) -> [String] {
+        var urls: [String] = []
+        if let pid = personId, let tag = primaryImageTag, !pid.isEmpty, !tag.isEmpty {
+            urls.append("\(baseURL)/Items/\(pid)/Images/Primary?quality=\(quality)&tag=\(tag)&api_key=\(apiKey)")
+            urls.append("\(baseURL)/Persons/\(pid)/Images/Primary?quality=\(quality)&tag=\(tag)&api_key=\(apiKey)")
+        }
+        if let pid = personId, !pid.isEmpty {
+            urls.append("\(baseURL)/Items/\(pid)/Images/Primary?quality=\(quality)&api_key=\(apiKey)")
+        }
+        if let name = personName, !name.isEmpty {
+            let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name
+            urls.append("\(baseURL)/Persons/\(encoded)/Images/Primary?quality=\(quality)&api_key=\(apiKey)")
+        }
+        return urls
     }
     
     // MARK: - Streaming URLs
@@ -456,7 +481,8 @@ extension BaseItemDto {
                     name: person.name ?? "",
                     id: person.id ?? "",
                     role: person.role,
-                    type: person.type ?? ""
+                    type: person.type ?? "",
+                    primaryImageTag: person.primaryImageTag
                 )
             },
             mediaStreams: (mediaStreams ?? []).map { stream in

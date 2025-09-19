@@ -348,6 +348,14 @@ final class APIRoutes: @unchecked Sendable {
             return try jsonResponse(items)
         }
 
+        // GET /api/v1/clients/movies/:id/cast - cast & crew for client apps
+        movies.get(":id/cast") { request, context in
+            let id = try context.parameters.require("id")
+            let limit = request.uri.queryParameters["limit"].flatMap { Int(String($0)) }
+            let types = request.uri.queryParameters["types"].map { String($0).split(separator: ",").map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) } }
+            return try jsonResponse(try await self.movieService.getCastDetails(movieId: String(id), limit: limit, types: types))
+        }
+
         // GET /api/v1/clients/stream/:jellyfinId - Get streaming URLs on demand
         clients.get("stream/:jellyfinId") { request, context in
             let jellyfinId = try context.parameters.require("jellyfinId")

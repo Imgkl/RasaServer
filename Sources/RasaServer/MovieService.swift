@@ -468,6 +468,61 @@ final class MovieService {
       } ?? []
   }
 
+  // MARK: - People / Cast
+  /// Return cast and crew details for a movie (resolved by UUID or Jellyfin id).
+  /// Optionally filter by types (e.g., ["Actor","Director"]) and/or limit count.
+  func getCastDetails(movieId: String, limit: Int? = nil, types: [String]? = nil) async throws -> CastResponse {
+    let movie = try await getMovieEntity(id: movieId)
+
+    // 1) Prefer cached people from DB metadata
+    if let cached = movie.jellyfinMetadata?.people, !cached.isEmpty {
+      let filtered: [JellyfinPerson] = cached.filter { p in
+        if let types = types, !types.isEmpty { return types.contains(p.type) }
+        return true
+      }
+      var people: [PersonResponse] = filtered.map { p in
+        PersonResponse(
+          id: p.id,
+          name: p.name,
+          role: p.role,
+          type: p.type,
+          imageUrl: jellyfinService.getPersonImageUrl(personId: p.id, primaryImageTag: p.primaryImageTag)
+        )
+      }
+      if let n = limit, n >= 0 { people = Array(people.prefix(n)) }
+      return CastResponse(people: people)
+    }
+
+    // 2) Fallback to Jellyfin if cache is empty
+    let live = try await jellyfinService.fetchMovie(id: movie.jellyfinId)
+    let all = (live.people ?? []).filter { $0.name?.isEmpty == false }
+    let filtered = all.filter { p in
+      if let types = types, !types.isEmpty { return types.contains(p.type ?? "") }
+      return true
+    }
+    var people: [PersonResponse] = filtered.map { p in
+      PersonResponse(
+        id: p.id ?? (p.name ?? ""),
+        name: p.name ?? "",
+        role: p.role,
+        type: p.type ?? "",
+        imageUrl: jellyfinService.getPersonImageUrl(personId: p.id, primaryImageTag: p.primaryImageTag)
+      )
+    }
+
+    // Warm DB cache with full metadata (including People)
+    do {
+      let meta = live.toJellyfinMovieMetadata()
+      movie.jellyfinMetadata = meta
+      try await movie.save(on: fluent.db())
+    } catch {
+      logger.debug("Failed to warm cache with people for movie \(movie.jellyfinId): \(error)")
+    }
+
+    if let n = limit, n >= 0 { people = Array(people.prefix(n)) }
+    return CastResponse(people: people)
+  }
+
   // MARK: - Clients API helpers
   func getClientMovies() async throws -> ClientMoviesListResponse {
     let movies = try await Movie.query(on: fluent.db())
@@ -1164,11 +1219,32 @@ final class MovieService {
     do {
       var request = HTTPClientRequest(url: url)
       request.method = .HEAD
+      request.headers.add(name: "Accept", value: "image/*")
       let response = try await jellyfinService.httpClient.execute(request, timeout: .seconds(5))
-      return response.status == .ok
+      let code = Int(response.status.code)
+      if (200...399).contains(code) { return true }
+      // Fallback to small GET range
+      var getReq = HTTPClientRequest(url: url)
+      getReq.method = .GET
+      getReq.headers.add(name: "Accept", value: "image/*")
+      getReq.headers.add(name: "Range", value: "bytes=0-1")
+      let getRes = try await jellyfinService.httpClient.execute(getReq, timeout: .seconds(6))
+      let gcode = Int(getRes.status.code)
+      return (200...399).contains(gcode)
     } catch {
-      logger.debug("Image validation failed for \(url): \(error)")
-      return false
+      // Fallback to GET if HEAD failed (some proxies block HEAD)
+      do {
+        var getReq = HTTPClientRequest(url: url)
+        getReq.method = .GET
+        getReq.headers.add(name: "Accept", value: "image/*")
+        getReq.headers.add(name: "Range", value: "bytes=0-1")
+        let getRes = try await jellyfinService.httpClient.execute(getReq, timeout: .seconds(6))
+        let gcode = Int(getRes.status.code)
+        return (200...399).contains(gcode)
+      } catch {
+        logger.debug("Image validation failed for \(url): \(error)")
+        return false
+      }
     }
   }
 
