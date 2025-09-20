@@ -341,6 +341,59 @@ final class APIRoutes: @unchecked Sendable {
             return try jsonResponse(payload)
         }
 
+        // GET /api/v1/clients/topshelf - continue watching + recently added + featured mood
+        clients.get("topshelf") { request, context in
+            let headerName = HTTPField.Name("X-Mood-Exclude")
+            let excludeHeader = request.headers.first { $0.name == headerName }?.value
+            let excludedMoods: [String] = excludeHeader.map { value in
+                value.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            } ?? []
+
+            let maxPerRow = 5
+
+            // Deterministic daily featured mood
+            let allMoods = Array(self.movieService.config.moodBuckets.keys)
+            let excludeSet = Set(excludedMoods.filter { !$0.isEmpty })
+            var pool = allMoods.filter { !excludeSet.contains($0) }
+            if pool.isEmpty { pool = allMoods }
+            let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
+            let seed = df.string(from: Date())
+            func djb2(_ s: String) -> Int { var h = 5381; for u in s.unicodeScalars { h = ((h << 5) &+ h) &+ Int(u.value) }; return abs(h) }
+            let featuredSlug: String? = pool.isEmpty ? nil : Array(pool.sorted())[djb2(seed) % pool.count]
+            let featuredTitle: String? = featuredSlug.map { self.movieService.config.moodBuckets[$0]?.title ?? $0 }
+
+            async let cont = self.movieService.getContinueWatchingMovies(maxCount: maxPerRow)
+            async let recent = self.movieService.getRecentlyAddedMovies(maxCount: maxPerRow)
+            async let featuredItems: [ClientMovieResponse] = { () async -> [ClientMovieResponse] in
+                if let slug = featuredSlug {
+                    if let list = try? await self.movieService.getClientMovies(withTag: slug) {
+                        return Array(list.movies.prefix(maxPerRow))
+                    }
+                }
+                return []
+            }()
+
+            let (contItems, recentItems, featItems) = try await (cont, recent, featuredItems)
+
+            struct FeaturedBlock: Codable { let mood: String; let moodTitle: String; let items: [ClientMovieResponse] }
+            struct TopshelfPayload: Codable {
+                let continueWatching: [ClientMovieResponse]?
+                let recentlyAdded: [ClientMovieResponse]?
+                let featuredMood: FeaturedBlock?
+            }
+
+            let payload = TopshelfPayload(
+                continueWatching: contItems.isEmpty ? nil : contItems,
+                recentlyAdded: recentItems.isEmpty ? nil : recentItems,
+                featuredMood: {
+                    if let slug = featuredSlug, let title = featuredTitle, !featItems.isEmpty {
+                        return FeaturedBlock(mood: slug, moodTitle: title, items: featItems)
+                    } else { return nil }
+                }()
+            )
+            return try jsonResponse(payload)
+        }
+
         // GET /api/v1/clients/movies/:id/similar - more like this (array)
         movies.get(":id/similar") { request, context in
             let id = try context.parameters.require("id")
