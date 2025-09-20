@@ -886,26 +886,59 @@ final class MovieService {
   // Compute YouTube deeplink from a list of Jellyfin MediaUrl
   private func youtubeDeepLink(from trailers: [MediaUrl]?) -> String? {
     guard let trailers = trailers, !trailers.isEmpty else { return nil }
-    let urls = trailers.compactMap { $0.url }
-    for u in urls {
+    struct Candidate { let url: String; let name: String? }
+    let candidates: [Candidate] = trailers.compactMap { t in
+      guard let u = t.url else { return nil }
       let s = u.lowercased()
-      guard s.contains("youtube.com") || s.contains("youtu.be") else { continue }
-      guard let comps = URLComponents(string: u), let host = comps.host?.lowercased() else { continue }
-      // Explicitly skip YouTube Shorts
-      if host.contains("youtube.com"), comps.path.hasPrefix("/shorts/") { continue }
+      guard s.contains("youtube.com") || s.contains("youtu.be") else { return nil }
+      guard let comps = URLComponents(string: u), let host = comps.host?.lowercased() else { return nil }
+      // Skip YouTube Shorts entirely
+      if host.contains("youtube.com"), comps.path.hasPrefix("/shorts/") { return nil }
+      return Candidate(url: u, name: t.name?.lowercased())
+    }
+    guard !candidates.isEmpty else { return nil }
 
-      var videoId: String?
+    func isTeaserLike(_ name: String?) -> Bool {
+      guard let n = name else { return false }
+      return n.contains("teaser") || n.contains("tv spot") || n.contains(" spot") || n.contains("clip") || n.contains("sneak peek") || n.contains("featurette") || n.contains("promo")
+    }
+    func isTrailer(_ name: String?) -> Bool {
+      guard let n = name else { return false }
+      return n.contains("trailer")
+    }
+    func isOfficialTrailer(_ name: String?) -> Bool {
+      guard let n = name else { return false }
+      if isTeaserLike(name) { return false }
+      return n.contains("official") && n.contains("trailer")
+    }
+
+    func extractYouTubeId(from u: String) -> String? {
+      guard let comps = URLComponents(string: u), let host = comps.host?.lowercased() else { return nil }
+      if host.contains("youtube.com"), comps.path.hasPrefix("/shorts/") { return nil }
       if host.contains("youtu.be") {
         let p = comps.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        if !p.isEmpty { videoId = p }
+        return p.isEmpty ? nil : p
       } else if host.contains("youtube.com") {
         if comps.path.hasPrefix("/watch") {
-          videoId = comps.queryItems?.first(where: { $0.name == "v" })?.value
+          return comps.queryItems?.first(where: { $0.name == "v" })?.value
         } else if comps.path.hasPrefix("/embed/") {
-          videoId = comps.path.split(separator: "/").last.map(String.init)
+          return comps.path.split(separator: "/").last.map(String.init)
         }
       }
-      if let id = videoId, !id.isEmpty { return "youtube://watch/\(id)" }
+      return nil
+    }
+
+    let groups: [[Candidate]] = [
+      candidates.filter { isOfficialTrailer($0.name) },                          // Highest preference
+      candidates.filter { isTrailer($0.name) && !isTeaserLike($0.name) }         // Other trailers (non-teaser)
+    ]
+
+    for group in groups {
+      for c in group {
+        if let id = extractYouTubeId(from: c.url), !id.isEmpty {
+          return "youtube://watch/\(id)"
+        }
+      }
     }
     return nil
   }
