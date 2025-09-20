@@ -887,23 +887,26 @@ final class MovieService {
   private func youtubeDeepLink(from trailers: [MediaUrl]?) -> String? {
     guard let trailers = trailers, !trailers.isEmpty else { return nil }
     let urls = trailers.compactMap { $0.url }
-    guard let yt = urls.first(where: { u in
+    for u in urls {
       let s = u.lowercased()
-      return s.contains("youtube.com") || s.contains("youtu.be")
-    }) else { return nil }
-    guard let comps = URLComponents(string: yt), let host = comps.host?.lowercased() else { return nil }
-    var videoId: String?
-    if host.contains("youtu.be") {
-      let p = comps.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-      if !p.isEmpty { videoId = p }
-    } else if host.contains("youtube.com") {
-      if comps.path.hasPrefix("/watch") {
-        videoId = comps.queryItems?.first(where: { $0.name == "v" })?.value
-      } else if comps.path.hasPrefix("/embed/") || comps.path.hasPrefix("/shorts/") {
-        videoId = comps.path.split(separator: "/").last.map(String.init)
+      guard s.contains("youtube.com") || s.contains("youtu.be") else { continue }
+      guard let comps = URLComponents(string: u), let host = comps.host?.lowercased() else { continue }
+      // Explicitly skip YouTube Shorts
+      if host.contains("youtube.com"), comps.path.hasPrefix("/shorts/") { continue }
+
+      var videoId: String?
+      if host.contains("youtu.be") {
+        let p = comps.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        if !p.isEmpty { videoId = p }
+      } else if host.contains("youtube.com") {
+        if comps.path.hasPrefix("/watch") {
+          videoId = comps.queryItems?.first(where: { $0.name == "v" })?.value
+        } else if comps.path.hasPrefix("/embed/") {
+          videoId = comps.path.split(separator: "/").last.map(String.init)
+        }
       }
+      if let id = videoId, !id.isEmpty { return "youtube://watch/\(id)" }
     }
-    if let id = videoId, !id.isEmpty { return "youtube://watch/\(id)" }
     return nil
   }
 
