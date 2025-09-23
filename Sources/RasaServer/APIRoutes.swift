@@ -349,7 +349,9 @@ final class APIRoutes: @unchecked Sendable {
                 value.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             } ?? []
 
-            let maxPerRow = 5
+            let maxContinue = 5
+            let maxRecent = 10
+            let maxFeatured = 10
 
             // Deterministic daily featured mood
             let allMoods = Array(self.movieService.config.moodBuckets.keys)
@@ -362,12 +364,19 @@ final class APIRoutes: @unchecked Sendable {
             let featuredSlug: String? = pool.isEmpty ? nil : Array(pool.sorted())[djb2(seed) % pool.count]
             let featuredTitle: String? = featuredSlug.map { self.movieService.config.moodBuckets[$0]?.title ?? $0 }
 
-            async let cont = self.movieService.getContinueWatchingMovies(maxCount: maxPerRow)
-            async let recent = self.movieService.getRecentlyAddedMovies(maxCount: maxPerRow)
+            async let cont = self.movieService.getContinueWatchingMovies(maxCount: maxContinue)
+            async let recent = self.movieService.getRecentlyAddedMovies(maxCount: maxRecent)
             async let featuredItems: [ClientMovieResponse] = { () async -> [ClientMovieResponse] in
                 if let slug = featuredSlug {
                     if let list = try? await self.movieService.getClientMovies(withTag: slug) {
-                        return Array(list.movies.prefix(maxPerRow))
+                        // Deterministically randomize (daily) using the same seed
+                        let ordered = list.movies.sorted { a, b in
+                            let ha = djb2(seed + a.jellyfinId)
+                            let hb = djb2(seed + b.jellyfinId)
+                            if ha == hb { return a.jellyfinId < b.jellyfinId }
+                            return ha < hb
+                        }
+                        return Array(ordered.prefix(maxFeatured))
                     }
                 }
                 return []
