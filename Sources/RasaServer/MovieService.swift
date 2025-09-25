@@ -524,6 +524,72 @@ final class MovieService {
   }
 
   // MARK: - Clients API helpers
+  /// Upsert/refresh a single movie from client-provided Jellyfin payload and return updated client data
+  func refreshClientMovie(jellyfinId: String, item: BaseItemDto) async throws -> ClientMovieResponse {
+    // Convert incoming Jellyfin item to our internal metadata
+    let meta = item.toJellyfinMovieMetadata()
+
+    // Try to find existing movie by Jellyfin ID
+    let existing = try await Movie.query(on: fluent.db())
+      .filter(\.$jellyfinId == jellyfinId)
+      .with(\.$tags)
+      .first()
+
+    // Helper to compute candidate image URLs
+    func candidate(_ type: ImageType) -> String? {
+      return jellyfinService.getImageUrl(for: item, imageType: type)
+    }
+
+    if let movie = existing {
+      // Update fields from payload
+      movie.title = item.name ?? movie.title
+      movie.originalTitle = item.originalTitle ?? movie.originalTitle
+      movie.year = item.productionYear ?? movie.year
+      movie.overview = item.overview ?? movie.overview
+      movie.runtimeMinutes = item.runTimeTicks.map { Int($0 / 600_000_000) } ?? movie.runtimeMinutes
+      movie.genres = item.genres ?? movie.genres
+      // Director / Cast
+      if let director = item.people?.first(where: { ($0.type ?? "").lowercased() == "director" })?.name { movie.director = director }
+      if let actors = item.people?.filter({ ($0.type ?? "").lowercased() == "actor" }).compactMap({ $0.name }) { movie.cast = actors }
+      // Images (only overwrite if available)
+      if let p = candidate(.primary) { movie.posterUrl = p }
+      if let b = candidate(.backdrop) { movie.backdropUrl = b }
+      if let l = candidate(.logo) { movie.logoUrl = l }
+      // Trailer deeplink (only if we can compute)
+      if let deeplink = youtubeDeepLink(from: item.remoteTrailers) { movie.trailerDeepLink = deeplink }
+      // Full metadata overlay
+      movie.jellyfinMetadata = meta
+      try await movie.save(on: fluent.db())
+
+      // Reload with tags to build client response
+      let updated = try await Movie.query(on: fluent.db())
+        .filter(\.$jellyfinId == jellyfinId)
+        .with(\.$tags)
+        .first()
+        .unwrap(orError: MovieServiceError.movieNotFound(jellyfinId))
+      return buildClientMovie(from: updated, liveMeta: meta)
+    } else {
+      // Create new movie from metadata
+      let newMovie = meta.toMovie()
+      // Ensure correct Jellyfin ID from path
+      newMovie.jellyfinId = jellyfinId
+      // Images
+      newMovie.posterUrl = candidate(.primary) ?? newMovie.posterUrl
+      newMovie.backdropUrl = candidate(.backdrop) ?? newMovie.backdropUrl
+      newMovie.logoUrl = candidate(.logo) ?? newMovie.logoUrl
+      // Trailer deeplink
+      newMovie.trailerDeepLink = youtubeDeepLink(from: item.remoteTrailers) ?? newMovie.trailerDeepLink
+      try await newMovie.save(on: fluent.db())
+
+      // Reload to include tags relation (empty initially) for a consistent response
+      let created = try await Movie.query(on: fluent.db())
+        .filter(\.$jellyfinId == jellyfinId)
+        .with(\.$tags)
+        .first()
+        .unwrap(orError: MovieServiceError.movieNotFound(jellyfinId))
+      return buildClientMovie(from: created, liveMeta: meta)
+    }
+  }
   func getClientMovies() async throws -> ClientMoviesListResponse {
     let movies = try await Movie.query(on: fluent.db())
       .with(\.$tags)

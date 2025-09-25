@@ -413,6 +413,14 @@ final class APIRoutes: @unchecked Sendable {
             return try jsonResponse(try await self.movieService.getCastDetails(movieId: String(id), limit: limit, types: types))
         }
 
+        // POST /api/v1/clients/movies/:jellyfinId/refresh - upsert from Jellyfin payload and return updated client movie
+        movies.post(":jellyfinId/refresh") { request, context in
+            let jellyfinId = try context.parameters.require("jellyfinId")
+            let payload = try await request.decode(as: BaseItemDto.self, context: context)
+            let updated = try await self.movieService.refreshClientMovie(jellyfinId: String(jellyfinId), item: payload)
+            return try jsonResponse(updated)
+        }
+
         // GET /api/v1/clients/stream/:jellyfinId - Get streaming URLs on demand
         clients.get("stream/:jellyfinId") { request, context in
             let jellyfinId = try context.parameters.require("jellyfinId")
