@@ -308,34 +308,29 @@ final class APIRoutes: @unchecked Sendable {
             async let cont = self.movieService.getContinueWatchingMovies()
             async let recent = self.movieService.getRecentlyAddedMovies(maxCount: 20)
             async let random = self.movieService.getRandomMoodSection(excluding: excludedMoods)
-            async let progress = self.movieService.getTotalProgress()
+            let (bannerItems, contItems, recentItems, randomSection) = try await (banner, cont, recent, random)
 
-            let (bannerItems, contItems, recentItems, randomSection, progressStats) = try await (banner, cont, recent, random, progress)
-
-            struct RandomBlock: Codable { let mood: String; let moodTitle: String; let items: [ClientMovieResponse] }
-            struct ProgressStats: Codable { let totalMovies: Int; let watchedMovies: Int; let progressPercent: Float }
-            struct HomePayload: Codable {
-                let banner: [ClientMovieResponse]?
-                let continueWatching: [ClientMovieResponse]?
-                let recentlyAdded: [ClientMovieResponse]?
-                let random: RandomBlock?
-                let progress: ProgressStats
+            struct RandomBlockIds: Codable { let mood: String; let moodTitle: String; let items: [String] }
+            struct HomeIdsPayload: Codable {
+                let banner: [String]?
+                let continueWatching: [String]?
+                let recentlyAdded: [String]?
+                let random: RandomBlockIds?
             }
 
-            let payload = HomePayload(
-                banner: bannerItems.isEmpty ? nil : bannerItems,
-                continueWatching: contItems.isEmpty ? nil : contItems,
-                recentlyAdded: recentItems.isEmpty ? nil : recentItems,
+            let payload = HomeIdsPayload(
+                banner: bannerItems.isEmpty ? nil : bannerItems.map { $0.jellyfinId },
+                continueWatching: contItems.isEmpty ? nil : contItems.map { $0.jellyfinId },
+                recentlyAdded: recentItems.isEmpty ? nil : recentItems.map { $0.jellyfinId },
                 random: {
                     if let r = randomSection {
-                        return RandomBlock(mood: r.mood, moodTitle: r.moodTitle, items: r.items)
+                        return RandomBlockIds(
+                            mood: r.mood,
+                            moodTitle: r.moodTitle,
+                            items: r.items.map { $0.jellyfinId }
+                        )
                     } else { return nil }
-                }(),
-                progress: ProgressStats(
-                    totalMovies: progressStats.totalMovies,
-                    watchedMovies: progressStats.watchedMovies,
-                    progressPercent: progressStats.progressPercent
-                )
+                }()
             )
 
             return try jsonResponse(payload)
