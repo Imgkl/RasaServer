@@ -945,7 +945,8 @@ final class MovieService {
       isWatched: effectiveMeta?.userData?.played ?? false,
       progressMs: progressMs,
       progressPercent: progressPercent,
-      trailerUrl: trailerUrl
+      trailerUrl: trailerUrl,
+      addedAt: effectiveMeta?.dateCreated ?? movie.createdAt
     )
   }
 
@@ -1183,7 +1184,8 @@ final class MovieService {
               studios: jellyfinMovie.studios,
               imageBlurHashes: jellyfinMovie.imageBlurHashes,
               userData: jellyfinMovie.userData,
-              remoteTrailers: nil
+              remoteTrailers: nil,
+              dateCreated: jellyfinMovie.dateCreated
             )
             existing.jellyfinMetadata = strippedMeta
 
@@ -1218,7 +1220,8 @@ final class MovieService {
               studios: jellyfinMovie.studios,
               imageBlurHashes: jellyfinMovie.imageBlurHashes,
               userData: jellyfinMovie.userData,
-              remoteTrailers: nil
+              remoteTrailers: nil,
+              dateCreated: jellyfinMovie.dateCreated
             )
             movie.jellyfinMetadata = strippedMeta
             try await movie.save(on: fluent.db())

@@ -510,7 +510,8 @@ extension BaseItemDto {
                     lastPlayedDate: userData.lastPlayedDate
                 )
             },
-            remoteTrailers: remoteTrailers
+            remoteTrailers: remoteTrailers,
+            dateCreated: self.dateCreated.flatMap(Date.from(iso8601:))
         )
     }
     

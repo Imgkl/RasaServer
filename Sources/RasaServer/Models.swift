@@ -190,6 +190,7 @@ struct JellyfinMovieMetadata: Codable, Sendable {
     let imageBlurHashes: [String: [String: String]]?
     let userData: JellyfinUserData?
     let remoteTrailers: [MediaUrl]?
+    let dateCreated: Date?
 
     enum CodingKeys: String, CodingKey {
         case id = "Id"
@@ -206,6 +207,7 @@ struct JellyfinMovieMetadata: Codable, Sendable {
         case imageBlurHashes = "ImageBlurHashes"
         case userData = "UserData"
         case remoteTrailers = "RemoteTrailers"
+        case dateCreated = "DateCreated"
     }
 
     init(
@@ -222,7 +224,8 @@ struct JellyfinMovieMetadata: Codable, Sendable {
         studios: [JellyfinStudio]?,
         imageBlurHashes: [String: [String: String]]?,
         userData: JellyfinUserData?,
-        remoteTrailers: [MediaUrl]?
+        remoteTrailers: [MediaUrl]?,
+        dateCreated: Date?
     ) {
         self.id = id
         self.name = name
@@ -238,6 +241,7 @@ struct JellyfinMovieMetadata: Codable, Sendable {
         self.imageBlurHashes = imageBlurHashes
         self.userData = userData
         self.remoteTrailers = remoteTrailers
+        self.dateCreated = dateCreated
     }
 
     init(from decoder: Decoder) throws {
@@ -256,6 +260,11 @@ struct JellyfinMovieMetadata: Codable, Sendable {
         self.imageBlurHashes = try c.decodeIfPresent([String: [String: String]].self, forKey: .imageBlurHashes)
         self.userData = try c.decodeIfPresent(JellyfinUserData.self, forKey: .userData)
         self.remoteTrailers = try c.decodeIfPresent([MediaUrl].self, forKey: .remoteTrailers)
+        if let dc = try c.decodeIfPresent(String.self, forKey: .dateCreated) {
+            self.dateCreated = Date.from(iso8601: dc)
+        } else {
+            self.dateCreated = nil
+        }
     }
     
     var runtimeMinutes: Int? {
@@ -399,6 +408,7 @@ struct ClientMovieResponse: Codable, Sendable {
     let progressMs: Int?
     let progressPercent: Float?
     let trailerUrl: String?
+    let addedAt: Date?
 }
 
 struct ClientImages: Codable, Sendable {
