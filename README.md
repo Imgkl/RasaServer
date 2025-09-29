@@ -90,7 +90,6 @@ Then:
 1. Open `http://localhost:3242` in your browser (Web UI)
 2. Complete setup wizard (enter Jellyfin URL + credentials)
 3. Run initial sync
-4. Configure RasaPlay app to point at `http://your-server:3242/api`
 
 ### Option 2: Local Development
 ```bash
