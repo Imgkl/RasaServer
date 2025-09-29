@@ -295,6 +295,14 @@ final class APIRoutes: @unchecked Sendable {
       return try jsonResponse(try await self.movieService.getClientMovies())
     }
 
+    // POST /api/v1/clients/movies/refresh/:jellyfinId - Upsert from client-provided Jellyfin payload
+    movies.post("refresh/:jellyfinId") { request, context in
+      let jellyfinId = try context.parameters.require("jellyfinId")
+      let item = try await request.decode(as: BaseItemDto.self, context: context)
+      let updated = try await self.movieService.refreshClientMovie(jellyfinId: String(jellyfinId), item: item)
+      return try jsonResponse(updated)
+    }
+
     // GET /api/v1/clients/moods - list buckets
     moods.get { request, context in
       struct ClientMoods: Codable { let moods: [String: MoodBucket] }

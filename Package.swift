@@ -17,6 +17,9 @@ let package = Package(
         // HTTP Client for Jellyfin API
         .package(url: "https://github.com/swift-server/async-http-client.git", from: "1.21.0"),
         
+        // WebSocket client
+        .package(url: "https://github.com/vapor/websocket-kit.git", from: "2.6.0"),
+        
         
         // JSON/UUID utilities
         .package(url: "https://github.com/apple/swift-collections.git", from: "1.1.0"),
@@ -46,6 +49,7 @@ let package = Package(
                 
                 // HTTP Client
                 .product(name: "AsyncHTTPClient", package: "async-http-client"),
+                .product(name: "WebSocketKit", package: "websocket-kit"),
                 
                 
                 // Utilities

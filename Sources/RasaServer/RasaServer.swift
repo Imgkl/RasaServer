@@ -70,6 +70,16 @@ struct RasaServerApp {
             jellyfinService: jellyfinService,
             llmService: llmService
         )
+        // Start realtime listener if configured
+        var realtime: JellyfinRealtimeService? = nil
+        if !appConfig.jellyfinUrl.isEmpty && !appConfig.jellyfinApiKey.isEmpty && !appConfig.jellyfinUserId.isEmpty {
+            let rt = JellyfinRealtimeService(config: appConfig, movieService: movieService, eventLoopGroup: eventLoopGroup, logger: logger)
+            rt.start()
+            realtime = rt
+            logger.info("🔔 Jellyfin realtime listener started")
+        } else {
+            logger.warning("🔕 Realtime listener not started (missing Jellyfin url/token/userId). Complete setup at /setup")
+        }
         
         // Create and run server
         let app = try await createApplication(
@@ -90,6 +100,8 @@ struct RasaServerApp {
         } catch {
             logger.error("Server runService error: \(error)")
         }
+        // Stop realtime first
+        if let rt = realtime { await rt.stop() }
         // Shutdown in order: HTTP client, then event loop group (async)
         try await httpClient.shutdown()
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in

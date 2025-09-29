@@ -404,6 +404,40 @@ final class JellyfinService: Sendable {
         }
         return aggregated.map { $0.toJellyfinMovieMetadata() }
     }
+
+    /// Fetch raw BaseItemDto items in batches by ids (used for upsert paths that need full payload)
+    func fetchBaseItems(ids: [String]) async throws -> [BaseItemDto] {
+        guard !ids.isEmpty else { return [] }
+        let chunks = ids.chunked(into: 80)
+        var out: [BaseItemDto] = []
+        out.reserveCapacity(ids.count)
+
+        for c in chunks {
+            let idsParam = c.joined(separator: ",")
+            let queryItems = [
+                "Ids": idsParam,
+                // Include fields we commonly need for refreshClientMovie
+                "Fields": "Overview,People,MediaStreams,ProviderIds,Studios,Taglines,RemoteTrailers"
+            ]
+
+            let queryString = queryItems.map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? $0.value)" }.joined(separator: "&")
+
+            var request = HTTPClientRequest(url: "\(baseURL)/Users/\(userId)/Items?\(queryString)")
+            request.method = .GET
+            request.headers.add(name: "Authorization", value: "MediaBrowser Token=\"\(apiKey)\"")
+
+            let response = try await httpClient.execute(request, timeout: .seconds(30))
+
+            guard response.status == .ok else {
+                throw JellyfinError.requestFailed("Failed to fetch items: \(response.status)")
+            }
+
+            let responseData = try await response.body.collect(upTo: 5 * 1024 * 1024)
+            let itemsResponse = try JSONDecoder().decode(JellyfinItemsResponse.self, from: responseData)
+            out.append(contentsOf: itemsResponse.items ?? [])
+        }
+        return out
+    }
     
     // MARK: - Server Info
     

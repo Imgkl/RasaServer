@@ -33,6 +33,28 @@ final class MovieService {
     self.llmService = llmService
   }
 
+  /// Delete a movie (and its tag relations) by Jellyfin item id. Returns true if deleted.
+  func deleteMovieByJellyfinId(_ jellyfinId: String) async throws -> Bool {
+    if let movie = try await Movie.query(on: fluent.db())
+      .filter(\.$jellyfinId == jellyfinId)
+      .with(\.$tags)
+      .first()
+    {
+      let tagSlugs = movie.tags.map { $0.slug }
+      // Remove pivot rows
+      try await MovieTag.query(on: fluent.db())
+        .filter(\.$movie.$id == movie.requireID())
+        .delete()
+      // Delete the movie
+      try await movie.delete(on: fluent.db())
+      // Recompute usage counts for affected tags
+      try await updateTagUsageCounts(for: tagSlugs)
+      logger.info("Deleted movie with Jellyfin id \(jellyfinId)")
+      return true
+    }
+    return false
+  }
+
   // MARK: - Movie Management
 
   func getMovies(limit: Int = 50, offset: Int = 0, includeTags: Bool = false) async throws
