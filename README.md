@@ -2,9 +2,12 @@
 
 > [!NOTE]
 **Answer "What should I watch tonight?" based on how you feel, not just by genre.**
+>
+> Imagine having 500+ movies in Jellyfin and spending 30 minutes every night scrolling through them. Genre filters didn't help because "Thriller" includes everything from *The Bourne Identity* to *Hereditary*.
+>
+> I wanted to browse by *mood*, not just category. So I built this.
 
-
-RasaServer is a mood-first movie discovery layer that sits alongside Jellyfin, organizing your library into curated mood buckets. It powers the [RasaPlay](https://github.com/imgkl/RasaPlay) viewing app and includes a web UI for setup and tag management.
+RasaServer is a vibe-based movie discovery layer that sits alongside Jellyfin, organizing your library by each film's atmosphere and tone instead of generic genres. It powers the [RasaPlay (WIP)](https://github.com/imgkl/RasaPlay) viewing app and includes a web UI for setup and tag management.
 
 ---
 
@@ -12,7 +15,7 @@ RasaServer is a mood-first movie discovery layer that sits alongside Jellyfin, o
 
 **The Problem:** Browsing by genre doesn't match how you actually choose movies. "Action" doesn't tell you if it's a brainless popcorn flick or a slow-burn thriller.
 
-**The Solution:** Mood-based organization. Instead of "Thriller," you browse:
+**The Solution:** Movie's mood-based organization. Instead of "Thriller," you browse:
 - 🎭 **Dialogue-Driven** - Character-focused narratives
 - 🌧️ **Rain & Neon Aesthetic** - Cyberpunk/neo-noir vibes  
 - 🧠 **Brainmelt Zone** - Mind-bending psychological films
@@ -61,7 +64,7 @@ RasaServer is a mood-first movie discovery layer that sits alongside Jellyfin, o
 ## Features
 
 ### Core
-- ✅ **Mood-based organization** - 36 curated moods (see full list below)
+- ✅ **Movie's mood-based organization** - 36 curated moods (see full list below)
 - ✅ **Real-time sync** - Jellyfin webhooks keep data fresh
 - ✅ **Auto-tagging** - Optional AI suggestions (BYOK: Claude)
 - ✅ **Manual tagging** - Web UI for fine-tuning
