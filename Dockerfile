@@ -20,7 +20,7 @@ FROM node:${NODE_VERSION}-alpine AS frontend-builder
 WORKDIR /app
 
 # Install build dependencies
-RUN apk add --no-cache python3 make g++ git
+RUN apk add --no-cache g++ git make python3
 
 # Copy frontend package files
 COPY frontend/rasa-web/package.json frontend/rasa-web/package-lock.json* ./
@@ -44,18 +44,22 @@ RUN ls -la /public/ && echo "Frontend build completed"
 # ==============================================================================
 FROM swift:${SWIFT_VERSION}-${UBUNTU_VERSION} AS swift-builder
 
-# Install native build dependencies
+# Install native build dependencies (with robust apt retries)
 RUN export DEBIAN_FRONTEND=noninteractive && \
-    apt-get update && \
-    apt-get install -y \
+    set -eux; \
+    echo 'Acquire::Retries "5";' > /etc/apt/apt.conf.d/80-retries; \
+    for i in 1 2 3 4 5; do \
+        apt-get update && break || (echo "apt-get update failed, retrying..." && sleep 5); \
+    done; \
+    apt-get install -y --no-install-recommends \
+        binutils \
         build-essential \
         curl \
-        pkg-config \
         libsqlite3-dev \
         libssl-dev \
-        zlib1g-dev \
-        binutils \
-    && rm -rf /var/lib/apt/lists/*
+        pkg-config \
+        zlib1g-dev; \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace
 
@@ -77,16 +81,14 @@ RUN --mount=type=cache,id=spm-cache,target=/root/.swiftpm \
     echo "Building Rasa Server for target platform: $TARGETPLATFORM" && \
     swift build --configuration release --product RasaServer
 
-# Verify and display binary information
+# Verify, strip and display binary information (single layer)
 RUN echo "=== Binary Verification ===" && \
     ls -la .build/release/ && \
     file .build/release/RasaServer || true && \
     ldd .build/release/RasaServer 2>/dev/null || echo "Static binary (no dynamic dependencies)" && \
     echo "Binary size: $(stat -c%s .build/release/RasaServer) bytes" || true && \
-    echo "=========================="
-
-# Strip binary to reduce size
-RUN strip .build/release/RasaServer || true && \
+    echo "==========================" && \
+    strip .build/release/RasaServer || true && \
     echo "Final binary size: $(stat -c%s .build/release/RasaServer) bytes" || true
 
 # ==============================================================================
@@ -97,27 +99,24 @@ FROM swift:${SWIFT_VERSION}-${UBUNTU_VERSION}-slim
 # Bring build args into this stage
 ARG RASA_VERSION
 
-# Install runtime dependencies
+# Install runtime dependencies and create user/group (single layer with retries)
 RUN export DEBIAN_FRONTEND=noninteractive && \
-    apt-get update && \
-    apt-get install -y \
-        # Core runtime libraries
+    set -eux; \
+    echo 'Acquire::Retries "5";' > /etc/apt/apt.conf.d/80-retries; \
+    for i in 1 2 3 4 5; do \
+        apt-get update && break || (echo "apt-get update failed, retrying..." && sleep 5); \
+    done; \
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
         libsqlite3-0 \
         libssl3 \
-        zlib1g \
-        # Utilities for health checks and debugging
-        curl \
-        wget \
-        ca-certificates \
-        # Process management
         tini \
-        # Timezone data
         tzdata \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
-
-# Create application user and group
-RUN groupadd -r rasa && \
+        wget \
+        zlib1g; \
+    rm -rf /var/lib/apt/lists/* && apt-get clean; \
+    groupadd -r rasa; \
     useradd -r -g rasa -d /app -s /bin/bash -c "Rasa Server User" rasa
 
 # Set working directory
