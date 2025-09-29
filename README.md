@@ -45,6 +45,10 @@ RasaServer is a mood-first movie discovery layer that sits alongside Jellyfin, o
     └──────────────┘
 ```
 
+> [!Important]
+> Jellyfin is always the source of truth. RasaServer is just an intelligent index layer.
+>
+
 **How it works:**
 1. RasaServer syncs your Jellyfin library (one-time setup via Web UI)
 2. Automatically tags movies into mood buckets
