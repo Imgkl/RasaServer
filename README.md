@@ -189,14 +189,6 @@ Access at `http://your-server:3242`
 
 ---
 
-## Requirements
-
-- **Jellyfin** server (v10.8+)
-- **Docker** (recommended) or Node.js 18+
-- **RasaPlay app** (coming soon)
-
----
-
 ## Contributing
 
 This is a personal project, but PRs are welcome for:
