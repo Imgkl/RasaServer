@@ -158,6 +158,63 @@ final class JellyfinService: Sendable {
         return (itemsResponse.items ?? []).map { $0.toJellyfinMovieMetadata() }
     }
     
+    /// All movies sorted by title (Name) ascending
+    func getAllMoviesByTitle(limit: Int = 15) async throws -> [JellyfinMovieMetadata] {
+        let queryItems = [
+            "Limit": "\(limit)",
+            "Recursive": "true",
+            "SortOrder": "Ascending",
+            "Fields": "UserData,RunTimeTicks",
+            "IncludeItemTypes": "Movie",
+            "SortBy": "Name"
+        ]
+        
+        let queryString = queryItems.map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? $0.value)" }.joined(separator: "&")
+        
+        var request = HTTPClientRequest(url: "\(baseURL)/Users/\(userId)/Items?\(queryString)")
+        request.method = .GET
+        request.headers.add(name: "Authorization", value: "MediaBrowser Token=\"\(apiKey)\"")
+        
+        let response = try await httpClient.execute(request, timeout: .seconds(30))
+        
+        guard response.status == .ok else {
+            throw JellyfinError.requestFailed("Failed to fetch all movies by title: \(response.status)")
+        }
+        
+        let responseData = try await response.body.collect(upTo: 5 * 1024 * 1024)
+        let itemsResponse = try JSONDecoder().decode(JellyfinItemsResponse.self, from: responseData)
+        return (itemsResponse.items ?? []).map { $0.toJellyfinMovieMetadata() }
+    }
+    
+    /// Unwatched movies (IsUnplayed) sorted by title (Name) ascending
+    func getUnwatchedMoviesByTitle(limit: Int = 15) async throws -> [JellyfinMovieMetadata] {
+        let queryItems = [
+            "Limit": "\(limit)",
+            "Recursive": "true",
+            "SortOrder": "Ascending",
+            "Fields": "UserData,RunTimeTicks",
+            "IncludeItemTypes": "Movie",
+            "SortBy": "Name",
+            "Filters": "IsUnplayed"
+        ]
+        
+        let queryString = queryItems.map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? $0.value)" }.joined(separator: "&")
+        
+        var request = HTTPClientRequest(url: "\(baseURL)/Users/\(userId)/Items?\(queryString)")
+        request.method = .GET
+        request.headers.add(name: "Authorization", value: "MediaBrowser Token=\"\(apiKey)\"")
+        
+        let response = try await httpClient.execute(request, timeout: .seconds(30))
+        
+        guard response.status == .ok else {
+            throw JellyfinError.requestFailed("Failed to fetch unwatched movies by title: \(response.status)")
+        }
+        
+        let responseData = try await response.body.collect(upTo: 5 * 1024 * 1024)
+        let itemsResponse = try JSONDecoder().decode(JellyfinItemsResponse.self, from: responseData)
+        return (itemsResponse.items ?? []).map { $0.toJellyfinMovieMetadata() }
+    }
+    
     func fetchMovie(id: String) async throws -> BaseItemDto {
         var request = HTTPClientRequest(url: "\(baseURL)/Users/\(userId)/Items/\(id)?Fields=Overview,People,MediaStreams,ProviderIds,RemoteTrailers")
         request.method = .GET

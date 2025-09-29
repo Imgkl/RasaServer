@@ -333,11 +333,13 @@ final class APIRoutes: @unchecked Sendable {
       async let banner = self.movieService.getBannerMovies(maxCount: 5)
       async let cont = self.movieService.getContinueWatchingMovies()
       async let recent = self.movieService.getRecentlyAddedMovies(maxCount: 20)
+      async let allMovies = self.movieService.getAllMoviesByTitle(maxCount: 15)
+      async let unwatched = self.movieService.getUnwatchedMoviesByTitle(maxCount: 15)
       async let random = self.movieService.getRandomMoodSection(excluding: excludedMoods)
       async let progress = self.movieService.getTotalProgress()
 
-      let (bannerItems, contItems, recentItems, randomSection, progressStats) = try await (
-        banner, cont, recent, random, progress
+      let (bannerItems, contItems, recentItems, allItems, unwatchedItems, randomSection, progressStats) = try await (
+        banner, cont, recent, allMovies, unwatched, random, progress
       )
 
       struct RandomBlock: Codable {
@@ -354,6 +356,8 @@ final class APIRoutes: @unchecked Sendable {
         let banner: [ClientMovieResponse]?
         let continueWatching: [ClientMovieResponse]?
         let recentlyAdded: [ClientMovieResponse]?
+        let allMovies: [ClientMovieResponse]?
+        let unwatched: [ClientMovieResponse]?
         let random: RandomBlock?
         let progress: ProgressStats
       }
@@ -362,6 +366,8 @@ final class APIRoutes: @unchecked Sendable {
         banner: bannerItems.isEmpty ? nil : bannerItems,
         continueWatching: contItems.isEmpty ? nil : contItems,
         recentlyAdded: recentItems.isEmpty ? nil : recentItems,
+        allMovies: allItems.isEmpty ? nil : allItems,
+        unwatched: unwatchedItems.isEmpty ? nil : unwatchedItems,
         random: {
           if let r = randomSection {
             return RandomBlock(mood: r.mood, moodTitle: r.moodTitle, items: r.items)

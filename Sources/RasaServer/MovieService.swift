@@ -802,6 +802,46 @@ final class MovieService {
     return out
   }
 
+  /// All Movies sorted by title (ascending) with hard limit (default 15)
+  func getAllMoviesByTitle(maxCount: Int = 15) async throws -> [ClientMovieResponse] {
+    let items = try await jellyfinService.getAllMoviesByTitle(limit: maxCount)
+    if items.isEmpty { return [] }
+    let ids = items.map { $0.id }
+    let local = try await Movie.query(on: fluent.db())
+      .filter(\.$jellyfinId ~~ ids)
+      .with(\.$tags)
+      .all()
+    let byId = Dictionary(uniqueKeysWithValues: local.map { ($0.jellyfinId, $0) })
+    var out: [ClientMovieResponse] = []
+    out.reserveCapacity(items.count)
+    for meta in items {
+      if let m = byId[meta.id] {
+        out.append(buildClientMovie(from: m, liveMeta: meta))
+      }
+    }
+    return out
+  }
+
+  /// Unwatched Movies (IsUnplayed) sorted by title (ascending) with hard limit (default 15)
+  func getUnwatchedMoviesByTitle(maxCount: Int = 15) async throws -> [ClientMovieResponse] {
+    let items = try await jellyfinService.getUnwatchedMoviesByTitle(limit: maxCount)
+    if items.isEmpty { return [] }
+    let ids = items.map { $0.id }
+    let local = try await Movie.query(on: fluent.db())
+      .filter(\.$jellyfinId ~~ ids)
+      .with(\.$tags)
+      .all()
+    let byId = Dictionary(uniqueKeysWithValues: local.map { ($0.jellyfinId, $0) })
+    var out: [ClientMovieResponse] = []
+    out.reserveCapacity(items.count)
+    for meta in items {
+      if let m = byId[meta.id] {
+        out.append(buildClientMovie(from: m, liveMeta: meta))
+      }
+    }
+    return out
+  }
+
   /// Get total progress statistics
   func getTotalProgress() async throws -> (totalMovies: Int, watchedMovies: Int, progressPercent: Float) {
     // Get all movies
