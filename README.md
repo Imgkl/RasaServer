@@ -49,7 +49,7 @@ RasaServer is a vibe-based movie discovery layer that sits alongside Jellyfin, o
 ```
 
 > [!Important]
-> Jellyfin is always the source of truth. RasaServer is just an intelligent index layer.
+> Jellyfin is always the source of truth. RasaServer is just an intelligent vibe index layer.
 >
 
 **How it works:**
